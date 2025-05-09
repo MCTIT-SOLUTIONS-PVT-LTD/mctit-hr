@@ -7,6 +7,7 @@ use App\Http\Controllers\AwardController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\ClientController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\MeetingController;
@@ -84,6 +85,11 @@ use App\Http\Controllers\PayslipTypeController;
 use App\Http\Controllers\TemplateController;
 use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\SalarySlipController;
+use App\Http\Controllers\ReimbursementController;
+use App\Http\Controllers\ITTicketController;
+use App\Http\Controllers\ComplaintsController;
+use App\Http\Controllers\LeaveEmployeeController;
 
 /*
 |--------------------------------------------------------------------------
@@ -275,6 +281,13 @@ Route::group(['middleware' => ['verified']], function () {
     );
 
     Route::resource('employee', EmployeeController::class)->middleware(
+        [
+            'auth',
+            'XSS',
+        ]
+    );
+
+    Route::resource('client', ClientController::class)->middleware(
         [
             'auth',
             'XSS',
@@ -741,6 +754,7 @@ Route::group(['middleware' => ['verified']], function () {
         ]
     );
 
+
     Route::get('calender/leave', [LeaveController::class, 'calender'])->name('leave.calender')->middleware(
         [
             'auth',
@@ -754,6 +768,26 @@ Route::group(['middleware' => ['verified']], function () {
             'XSS',
         ]
     );
+
+    Route::get('leave/{id}/cancel', [LeaveController::class, 'cancelView'])->name('leave.cancel.view');
+    Route::post('leave/{id}/cancel', [LeaveController::class, 'cancelStore'])->name('leave.cancel.store');
+
+    Route::resource('leave-employee', LeaveEmployeeController::class)->middleware(
+        [
+            'auth',
+            'XSS',
+        ]
+    );
+
+    Route::get('leave-employee/{id}/action', [LeaveEmployeeController::class, 'action'])->name('leave-employee.action')->middleware(
+        [
+            'auth',
+            'XSS',
+        ]
+    );
+
+    Route::get('leave-employee/{id}/quick-approve', [LeaveEmployeeController::class, 'quickApproveForm'])->name('leave-employee.quick.form');
+    Route::post('leave-employee/{id}/quick-approve', [LeaveEmployeeController::class, 'quickApproveAction'])->name('leave-employee.quick.action');
     
     Route::get('ticket/{id}/reply', [TicketController::class, 'reply'])->name('ticket.reply')->middleware(
         [
@@ -785,6 +819,8 @@ Route::group(['middleware' => ['verified']], function () {
         // Attendance Logs
         Route::get('/logs', [AttendanceEmployeeController::class, 'getAttendance'])->name('attendance.logs');
     });
+
+    Route::post('/attendanceemployee/update-work-from-home', [AttendanceEmployeeController::class, 'updateWorkFromHome']);
 
     Route::get('attendanceemployee/bulkattendance', [AttendanceEmployeeController::class, 'bulkAttendance'])->name('attendanceemployee.bulkattendance')->middleware(
         [
@@ -823,6 +859,8 @@ Route::group(['middleware' => ['verified']], function () {
             'XSS',
         ]
     );
+
+    Route::get('/get-project-employees', [TimeSheetController::class, 'getEmployees'])->name('timesheet.project.employees');
 
 
     Route::resource('expensetype', ExpenseTypeController::class)->middleware(
@@ -1025,6 +1063,20 @@ Route::group(['middleware' => ['verified']], function () {
         ]
     );
     Route::get('report/monthly/attendance', [ReportController::class, 'monthlyAttendance'])->name('report.monthly.attendance')->middleware(
+        [
+            'auth',
+            'XSS',
+        ]
+    );
+
+    Route::get('report/financialYear/attendance', [ReportController::class, 'financialYearAttendance'])->name('report.financialYear.attendance')->middleware(
+        [
+            'auth',
+            'XSS',
+        ]
+    );
+
+    Route::get('report/employee-financialYear/attendance', [ReportController::class, 'employeeFinancialYearAttendance'])->name('report.employeeFinancialYear.attendance')->middleware(
         [
             'auth',
             'XSS',
@@ -1440,7 +1492,76 @@ Route::group(['middleware' => ['verified']], function () {
         ]
     );
 
+    Route::get('/projects/{id}/manager-employees', [ProjectController::class, 'getManagerEmployeesByProject'])
+    ->name('projects.manager.employees.by.project');
+
+    Route::get('/project/{id}/employees', [TicketController::class, 'getProjectEmployees'])
+    ->name('project.employees');
+
+    Route::post('/project/select', [TicketController::class, 'setSelectedProject'])->name('project.select');
+
+    // IT Ticket Routes
+    Route::resource('it-tickets', ITTicketController::class)->middleware([
+        'auth',
+        'XSS',
+    ]);
+
+    Route::get('/it-tickets/{id}/action', [ITTicketController::class, 'action'])->name('it-tickets.action');
+
+    Route::post('it-tickets/changeaction', [ITTicketController::class, 'changeaction'])->name('it-tickets.changeaction')->middleware(
+        [
+            'auth',
+        ]
+    );
+
+    Route::get('get-titles-by-category/{id}', function ($id) {
+        return \App\Models\IssueTitle::where('issue_category_id', $id)->pluck('name', 'id');
+    })->middleware(['auth', 'XSS'])->name('get.titles.by.category');
+
+    Route::resource('complaints', ComplaintsController::class)->middleware([
+        'auth',
+    ]);
+
+    Route::get('/complaints/{id}/action', [ComplaintsController::class, 'action'])->name('complaints.action');
+
+    Route::post('complaints/changeaction', [ComplaintsController::class, 'changeaction'])->name('complaints.changeaction')->middleware(
+        [
+            'auth',
+        ]
+    );
+
+    Route::resource('salary_slips', SalarySlipController::class)->middleware(
+        [
+            'auth',
+            'XSS',
+        ]
+    );
+
+    Route::get('/salary_slips/download/{id}', [SalarySlipController::class, 'download'])->name('salary_slips.download');
+
+    Route::post('/salary_slips/preview', [SalarySlipController::class, 'preview'])->name('salary_slips.preview');
+    Route::post('/salary_slips/confirm', [SalarySlipController::class, 'confirm'])->name('salary_slips.confirm');
+    Route::post('/salary_slips/delete_preview', [SalarySlipController::class, 'deletePreview'])->name('salary_slips.delete_preview');
+
     Route::get('/employees/search', [EmployeeController::class, 'search'])->name('employees.search');
+
+    Route::resource('reimbursements', ReimbursementController::class)->middleware(
+        [
+            'auth',
+            'XSS',
+        ]
+    );
+
+    Route::get('/reimbursements/{id}/action', [ReimbursementController::class, 'action'])
+    ->name('reimbursements.action');
+
+    Route::post('reimbursements/changeaction', [ReimbursementController::class, 'changeaction'])->name('reimbursements.changeaction')->middleware(
+        [
+            'auth',
+            'XSS',
+        ]
+    );
+
 
 
     // remove biometric code

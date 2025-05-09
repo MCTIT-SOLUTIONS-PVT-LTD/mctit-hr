@@ -1,4 +1,5 @@
 @php
+
     // $logos = asset(Storage::url('uploads/logo/'));
     $logos = \App\Models\Utility::get_file('uploads/logo/');
 
@@ -9,9 +10,12 @@
     $currantLang = $users->currentLanguage();
     $logo = \App\Models\Utility::get_superadmin_logo();
     $emailTemplate = App\Models\EmailTemplate::getemailTemplate();
+
     $mode_setting = \App\Models\Utility::mode_layout();
     $lang = Auth::user()->lang;
+
     $usersroleName = $users->roles[0]->name;
+
 
 @endphp
 {{-- <nav
@@ -38,13 +42,13 @@
         <ul class="dash-navbar">
 
             <!-- dashboard-->
-            @if (\Auth::user()->type != 'company' && \Auth::user()->type != 'CEO')
+            @if (\Auth::user()->type != 'company' && \Auth::user()->type != 'CEO' && \Auth::user()->type != 'management')
                 <li class="dash-item">
                     <a href="{{ route('dashboard') }}" class="dash-link"><span class="dash-micon"><i
                                 class="ti ti-home"></i></span><span class="dash-mtext">{{ __('Dashboard') }}</span></a>
                 </li>
             @endif
-            @if (\Auth::user()->type == 'company' || \Auth::user()->type == 'CEO')
+            @if (\Auth::user()->type == 'company' || \Auth::user()->type == 'CEO' || \Auth::user()->type == 'management')
                 <li class="dash-item dash-hasmenu  {{ Request::segment(1) == 'null' ? 'active dash-trigger' : '' }}">
                     <a href="#" class="dash-link"><span class="dash-micon"><i class="ti ti-home"></i></span><span
                             class="dash-mtext">{{ __('Dashboard') }}</span><span class="dash-arrow"><i
@@ -71,6 +75,11 @@
                                         <li class="dash-item">
                                             <a class="dash-link"
                                                 href="{{ route('report.monthly.attendance') }}">{{ __('Monthly Attendance') }}</a>
+                                        </li>
+
+                                        <li class="dash-item">
+                                            <a class="dash-link"
+                                                href="{{ route('report.financialYear.attendance') }}">{{ __('FinancialYear Attendance') }}</a>
                                         </li>
 
                                         <li class="dash-item">
@@ -199,6 +208,8 @@
             @endif
             <!-- payroll-->
 
+
+
             @if (\Auth::user()->type == 'employee')
                 <!-- <li
                     class="dash-item dash-hasmenu {{ Request::segment(1) == 'setsalary' ? 'dash-trigger active' : '' }}">
@@ -300,7 +311,7 @@
             @endif
             <!--Attendance company-->
 
-             <!-- Project Not company-->
+            <!-- Project Not company-->
             @if (Gate::check('Manage Project'))
                
                 <li class="dash-item">
@@ -311,13 +322,23 @@
             @endif
             <!-- Project Not company-->
 
-
+            @if (\Auth::user()->type == 'company' || \Auth::user()->type == 'CEO' || \Auth::user()->type == 'management')
+                <li class="dash-item">
+                    <a href="{{ route('client.index') }}" class="dash-link"><span class="dash-micon"><i
+                                class="ti ti-user"></i></span><span class="dash-mtext">{{ __('Manage Client') }}</span></a>
+                </li>
+            @endif
             <!-- Attendance Not company-->
             @if (Gate::check('Manage Attendance') && $usersroleName != "company")
                
                 <li class="dash-item">
                     <a href="{{ route('attendanceemployee.index') }}" class="dash-link"><span class="dash-micon"><i
                                 class="ti ti-map"></i></span><span class="dash-mtext">{{ __('Attendance') }}</span></a>
+                </li>
+
+                <li class="dash-item">
+                    <a href="{{ route('report.employeeFinancialYear.attendance') }}" class="dash-link"><span class="dash-micon"><i
+                                class="ti ti-device-floppy"></i></span><span class="dash-mtext">{{ __('Attendance Report') }}</span></a>
                 </li>
                 
             @endif
@@ -333,7 +354,14 @@
             @endcan
             <!-- TimeSheet-->
 
-
+            <!-- ticket-->
+            @can('Manage Ticket')
+                <li class="dash-item {{ Request::segment(1) == 'ticket' ? 'active' : '' }}">
+                    <a href="{{ route('ticket.index') }}" class="dash-link"><span class="dash-micon"><i
+                                class="ti ti-license"></i></span><span class="dash-mtext">{{ __('Ticket') }}</span></a>
+                </li>
+            @endcan
+            
             <!-- Leave-->
             @can('Manage Leave')
                 <li class="dash-item {{ Request::segment(1) == 'leave' ? 'active' : '' }}">
@@ -341,6 +369,17 @@
                                 class="ti ti-microphone"></i></span><span class="dash-mtext">{{ __('Manage Leave') }}</span></a>
                 </li>
             @endcan
+
+            @php
+                $employee = App\Models\Employee::where('user_id', \Auth::user()->id)->first();
+            @endphp
+
+            @if (isset($employee)  && $employee->is_manager === 1)
+                <li class="dash-item {{ Request::segment(1) == 'leave-employee' ? 'active' : '' }}">
+                    <a href="{{ route('leave-employee.index') }}" class="dash-link"><span class="dash-micon"><i
+                                class="ti ti-users"></i></span><span class="dash-mtext">{{ __('Employee Leave') }}</span></a>
+                </li>
+            @endif
             <!-- Leave-->
 
             <!-- performance-->
@@ -527,6 +566,62 @@
 
             <!-- Holiday-->
 
+            <!-- Pay Slip Not company-->
+            @if (Gate::check('Manage Pay Slip'))
+               
+                <li class="dash-item">
+                    <a href="{{ route('salary_slips.index') }}" class="dash-link"><span class="dash-micon"><i
+                                class="ti ti-wand"></i></span><span class="dash-mtext">{{ __('Pay Slip') }}</span></a>
+                </li>
+                
+            @endif
+            <!-- Pay Slip Not company-->
+
+            <!-- Leave-->
+            @can('Manage Leave')
+                <li class="dash-item {{ Request::segment(1) == 'reimbursements' ? 'active' : '' }}">
+                    <a href="{{ route('reimbursements.index') }}" class="dash-link"><span class="dash-micon"><i
+                                class="ti ti-medical-cross"></i></span><span class="dash-mtext">{{ __('Reimbursement') }}</span></a>
+                </li>
+            @endcan
+            <!-- Leave-->
+
+            <!-- Leave-->
+
+            @if (\Auth::user()->type == 'company')
+                <li class="dash-item {{ Request::segment(1) == 'it-tickets' ? 'active' : '' }}">
+                    <a href="{{ route('it-tickets.index') }}" class="dash-link"><span class="dash-micon"><i
+                                    class="ti ti-plug"></i></span><span class="dash-mtext">{{ __('IT-Tickets') }}</span></a>
+                </li>
+            @else
+                @can('Manage IT Ticket')
+                    <li class="dash-item {{ Request::segment(1) == 'it-tickets' ? 'active' : '' }}">
+                        <a href="{{ route('it-tickets.index') }}" class="dash-link"><span class="dash-micon"><i
+                                    class="ti ti-plug"></i></span><span class="dash-mtext">{{ __('IT-Tickets') }}</span></a>
+                    </li>
+                @endcan
+            @endif
+
+            
+
+           
+
+            @if (\Auth::user()->type == 'company')
+                <li class="dash-item {{ Request::segment(1) == 'complaints' ? 'active' : '' }}">
+                    <a href="{{ route('complaints.index') }}" class="dash-link"><span class="dash-micon"><i
+                                class="ti ti-ticket"></i></span><span class="dash-mtext">{{ __('Complaints') }}</span></a>
+                </li>
+            @else
+                @can('Manage Office-Complaint')
+                    <li class="dash-item {{ Request::segment(1) == 'complaints' ? 'active' : '' }}">
+                        <a href="{{ route('complaints.index') }}" class="dash-link"><span class="dash-micon"><i
+                                    class="ti ti-ticket"></i></span><span class="dash-mtext">{{ __('Complaints') }}</span></a>
+                    </li>
+                @endcan
+            @endif
+            
+            <!-- Leave-->
+
             <!-- recruitment-->
             @if (Gate::check('Manage Job') ||
                     Gate::check('Manage Job Application') ||
@@ -611,13 +706,7 @@
             {{-- @endcan --}}
 
 
-            <!-- ticket-->
-            @can('Manage Ticket')
-                <li class="dash-item {{ Request::segment(1) == 'ticket' ? 'active' : '' }}">
-                    <a href="{{ route('ticket.index') }}" class="dash-link"><span class="dash-micon"><i
-                                class="ti ti-ticket"></i></span><span class="dash-mtext">{{ __('Ticket') }}</span></a>
-                </li>
-            @endcan
+            
 
             <!-- Event-->
             @can('Manage Event')

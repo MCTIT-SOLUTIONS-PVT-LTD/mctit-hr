@@ -18,6 +18,13 @@ class Project extends Model
         'name',
         'description',
         'created_by',
+        'project_manager_ids',
+        'client_ids',
+    ];
+
+    protected $casts = [
+        'project_manager_ids' => 'array', // Cast as array
+        'client_ids' => 'array',
     ];
 
     /**
@@ -39,5 +46,13 @@ class Project extends Model
     public function employees()
     {
         return $this->belongsToMany(Employee::class, 'project_employee', 'project_id', 'employee_id');
+    }
+
+    /**
+     * Project Managers relationship - returns Employee models based on stored IDs
+     */
+    public function projectManagers()
+    {
+        return Employee::whereIn('id', $this->project_manager_ids ?? [])->get();
     }
 }

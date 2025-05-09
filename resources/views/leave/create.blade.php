@@ -42,7 +42,7 @@
                 </select>
             </div>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-6" id="half_day_type_div">
             <div class="form-group">
                 {{ Form::label('half_day_type', __('Leave(Full/Half Day)'), ['class' => 'col-form-label']) }}
                 <select name="half_day_type" id="half_day_type" class="form-control" required>
@@ -52,25 +52,64 @@
                 </select>
             </div>
         </div>
+
+        
+
+        <div class="col-md-6" id="time_dropdown_wrapper" style="display: none;">
+            <div class="form-group">
+                {{ Form::label('leave_time', __('Select Time'), ['class' => 'col-form-label']) }}
+                <select name="leave_time" id="leave_time" class="form-control">
+                    <option value="">{{ __('Select Time') }}</option>
+                    <option value="4:00 PM">4:00 PM</option>
+                    <option value="4:15 PM">4:15 PM</option>
+                    <option value="4:30 PM">4:30 PM</option>
+                    <option value="4:30 PM">4:45 PM</option>
+                    <option value="5:00 PM">5:00 PM</option>
+                    <option value="4:15 PM">5:15 PM</option>
+                    <option value="4:30 PM">5:30 PM</option>
+                    <option value="4:30 PM">5:45 PM</option>
+                    <option value="6:00 PM">6:00 PM</option>
+                </select>
+                <span style="color:#ff3a6e;font-size: 11px;"><b>Note :</b>Only one Early Leave is allowed per month. Must complete 8 hours. Applying on Same day is restricted.</span>
+            </div>
+        </div>
     </div>
 
-    <div class="row">
+    <!-- <div class="row">
         <div class="col-md-6">
             <div class="form-group">
                 {{ Form::label('approver', __('To (Approver)'), ['class' => 'col-form-label']) }}
                 <input type="text" class="form-control" id="approver" name="approver" value="Ravi Brahmbhatt" disabled>
             </div>
         </div>
-
-         <!-- New CC Mail Dropdown -->
+    </div> -->
+    <div class="row">
+        <!-- <div class="col-md-6">
+            <div class="form-group">
+                {{ Form::label('managers[]', __('Managers'), ['class' => 'col-form-label']) }}<x-required></x-required>
+                {{ Form::select('managers[]', 
+                    $managerList, 
+                    old('managers', $defaultManagerList), 
+                    ['class' => 'form-control select2', 'multiple' => 'multiple', 'id' => 'managers']
+                ) }}
+                <small class="text-muted">{{ __('You can select multiple reporting managers.') }}</small>
+            </div>
+        </div> -->
+        <div class="col-md-6">
+            <div class="form-group">
+                {{ Form::label('approver', __('To (Approver)'), ['class' => 'col-form-label']) }}
+                <input type="text" class="form-control" id="approver" name="approver" value="Ravi Brahmbhatt" disabled>
+            </div>
+        </div>
         <div class="col-md-6">
             <div class="form-group">
                 {{ Form::label('cc_email', __('CC Email'), ['class' => 'col-form-label']) }}<x-required></x-required>
                 {{ Form::select('cc_email_id[]', 
                     $employeesList->pluck('name', 'id'),
-                    $employeesList->whereIn('id', [2, 19])->pluck('id')->toArray(),
+                    $employeesList->whereIn('id', [2])->pluck('id')->toArray(),
                     ['class' => 'form-control select2', 'id' => 'cc_email_id', 'multiple' => 'multiple']
                 ) }}
+                <span style="color:#6f42c1;font-size: 11px;"><b>Note :</b>Nilesh Kalma is added by default to cc.</span>
             </div>
         </div>
     </div>
@@ -171,13 +210,13 @@
         $('#leave_type_id').on('change', function () {
             var selectedValue = $(this).val();
             
-            if (selectedValue == "1" || selectedValue == "3" || selectedValue == "4") {
+            if (selectedValue == "3" || selectedValue == "4" || selectedValue == "5") {
                 $('#half_day_type').val('full_day').prop('disabled', true);
             } else {
                 $('#half_day_type').prop('disabled', false);
             }
 
-            if(selectedValue == "4"){
+            if(selectedValue == "4" || selectedValue == "5"){
                 $('#start_date').val('');
                 $('#end_date').val('');
                 $('#end_date').prop('disabled', true);
@@ -189,7 +228,7 @@
         $('#start_date').on('blur', function () {
             var selectedValue = $('#leave_type_id').val();
             
-            if (selectedValue == "4") {
+            if (selectedValue == "4" || selectedValue == "5") {
                 var startDate = $(this).val();
                 $('#end_date').val(startDate);
             }
@@ -264,6 +303,20 @@
             }else{
                 $('#half_day_type').prop('disabled', false);
                 $('#end_date').prop('disabled', false);
+            }
+        });
+
+
+        $('#leave_type_id').on('change', function () {
+            var selectedValue = $(this).val();
+
+            if (selectedValue == "5") {
+                $('#time_dropdown_wrapper').show();
+                $('#half_day_type_div').css('display','none');
+            } else {
+                $('#time_dropdown_wrapper').hide();
+                $('#leave_time').val('');
+                $('#half_day_type_div').css('display','block');
             }
         });
     });

@@ -17,7 +17,10 @@ use App\Models\User;
 use App\Models\Utility;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Leave as LocalLeave;
+use App\Models\FinancialYear;
 use Carbon\Carbon;
+use App\Models\LeaveType;
+
 
 class HomeController extends Controller
 {
@@ -194,7 +197,8 @@ class HomeController extends Controller
                 } else {
                     // For non-employees (e.g., admin)
                     $leaves = LocalLeave::where('created_by', '=', \Auth::user()->creatorId())
-                        ->where('status', '=', 'Pending')  
+                        // ->where('status', '=', 'Pending')  
+                        ->whereIn('status', ['Partially_Approved', 'Manager_Approved'])
                         ->with(['employees', 'leaveType']) 
                         ->orderBy('start_date', 'desc')
                         ->get();
@@ -205,17 +209,17 @@ class HomeController extends Controller
                     if (!$today->isWeekend()) {
                         // Fetch leave records where the status is 'Approved' and today is between start_date and end_date
                         $Todayleaves = LocalLeave::where('created_by', '=', \Auth::user()->creatorId())
-                            //->where('status', '=', 'Approved')  
-                            ->whereDate('start_date', '<=', $today)
-                            ->whereDate('end_date', '>=', $today)
-                            ->with(['employees', 'leaveType']) 
-                            ->orderBy('start_date', 'desc')
-                            ->get();
+                                        ->where('status', '!=', 'Draft') // Exclude Draft status
+                                        ->whereDate('start_date', '<=', $today)
+                                        ->whereDate('end_date', '>=', $today)
+                                        ->with(['employees', 'leaveType'])
+                                        ->orderBy('start_date', 'desc')
+                                        ->get();
 
                         // Calculate total leave days for each leave if not already calculated
                         foreach ($Todayleaves as $Todayleave) {
                             if ($Todayleave->total_leave_days == 0) {
-                                $Todayleave->total_leave_days = $this->getTotalLeaveDays($Todayleave->start_date, $Todayleave->end_date);
+                                $Todayleave->total_leave_days = $this->getTotalLeaveDays($Todayleave->start_date, $Todayleave->end_date,$Todayleave->leave_type_id,$Todayleave->half_day_type);
                             }
                         }
                     }
@@ -224,7 +228,7 @@ class HomeController extends Controller
                 // Calculate total leave days for each leave if not already calculated
                 foreach ($leaves as $leave) {
                     if ($leave->total_leave_days == 0) {
-                        $leave->total_leave_days = $this->getTotalLeaveDays($leave->start_date, $leave->end_date);
+                        $leave->total_leave_days = $this->getTotalLeaveDays($leave->start_date, $leave->end_date,$leave->leave_type_id,$leave->half_day_type);
                     }
                 }
             }
@@ -289,7 +293,151 @@ class HomeController extends Controller
                 $officeTime['endTime']   = Utility::getValByName('company_end_time');
 
 
-                return view('dashboard.dashboard', compact('arrEvents', 'announcements', 'employees', 'meetings', 'employeeAttendance', 'officeTime','disableCheckbox','isWorkFromHome','leaves','Todayleaves','attendanceEmployee','ThisMonthattendanceCount', 'LastMonthattendanceCount','breakLogs', 'totalBreakDuration','totalSeconds','hasOngoingBreak'));
+                /* ******************* Leave calculation start ******************* */
+                $activeYear = FinancialYear::where('is_active', 1)->first();
+                $user = Auth::user();
+                $employee = Employee::where('user_id', $user->id)->first();
+
+                // All leave types
+                $leaveTypes = LeaveType::where(function ($query) {
+                                    $query->where('code', 'like', '%SL%')
+                                          ->orWhere('code', 'like', '%CL%');
+                                })->pluck('title', 'id');
+                $leaveCounts = [];
+
+                // Initialize structure
+                foreach ($leaveTypes as $id => $title) {
+                    $leaveCounts[$id] = [
+                        'Approved' => 0,
+                        'Rejected' => 0,
+                        'Pending' => 0,
+                    ];
+                }
+
+                // Get all leaves
+                $LeavesList = LocalLeave::where('employee_id', $employee->id)->get();
+
+                foreach ($LeavesList as $LeaveDetails) {
+                    $leaveTypeId = $LeaveDetails->leave_type_id;
+                    $status = $LeaveDetails->status;
+
+                    $start = Carbon::parse($LeaveDetails->start_date);
+                    $end = Carbon::parse($LeaveDetails->end_date);
+
+                    $halfDayType = $LeaveDetails->half_day_type;
+
+                    $days = 0;
+
+                    // Loop each date in range
+                    for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+                        $isWeekend = in_array($date->dayOfWeek, [Carbon::SATURDAY, Carbon::SUNDAY]);
+
+                        if ($isWeekend) {
+                            continue;
+                        }
+
+                        // Count only if date within financial year
+                        if ($date->between(Carbon::parse($activeYear->start_date), Carbon::parse($activeYear->end_date))) {
+                            // Count 0.5 for half-day (only if single day leave)
+                            if ($start->equalTo($end) && $halfDayType != 'full_day') {
+                                $days += 0.5;
+                            } else {
+                                $days += 1;
+                            }
+                        }
+                    }
+
+                    // Add to counter
+                    if (isset($leaveCounts[$leaveTypeId][$status])) {
+                        $leaveCounts[$leaveTypeId][$status] += $days;
+                    }
+                }
+
+                $leaveTypes = LeaveType::pluck('title', 'id');
+
+
+
+                $leaveTypesAll = LeaveType::where(function ($query) {
+                                    $query->where('code', 'like', '%SL%')
+                                          ->orWhere('code', 'like', '%CL%');
+                                })->get()->keyBy('id');
+
+                
+                /* ******************* Leave calculation end ******************* */
+                $user = \Auth::user();
+                $leaves_cc = LocalLeave::query()
+                                ->where(function ($query) use ($user) {
+                                    $query->whereJsonContains('cc_email', (string) ($user->employee->id ?? 0));
+                                })
+                                ->where('status', '!=', 'Draft')
+                                ->with(['employees', 'leaveType'])
+                                ->orderBy('start_date', 'desc')
+                                ->get();
+
+                /* *************** New Add Start ****************************/
+                $employeeCheck = Employee::select('id')->where('created_by', \Auth::user()->creatorId())->where('id', '!=', \Auth::user()->employee->id);
+
+                if (!empty($request->branch)) {
+                    $employeeCheck->where('branch_id', $request->branch);
+                }
+
+                if (!empty($request->department)) {
+                    $employeeCheck->where('department_id', $request->department);
+                }
+
+                $employeeCheck = $employeeCheck->get()->pluck('id');
+
+                // echo "<pre>";print_r($employeeCheck);exit;
+
+                // Get only today's attendance
+                $today = Carbon::today()->toDateString();
+
+                $FindOnBreakEmployee = AttendanceEmployee::whereIn('employee_id', $employeeCheck)
+                    ->whereDate('date', $today)
+                    ->orderByRaw('work_from_home DESC')
+                    ->orderBy('updated_at', 'desc')
+                    ->get()
+                    ->map(function ($attendance) {
+                        $breakLogs = $attendance->breaks()->get();
+                        $totalSeconds = 0;
+                        $isInBreak = false;
+
+                        foreach ($breakLogs as $break) {
+                            if (!empty($break->break_start)) {
+                                try {
+                                    $start = Carbon::parse($break->break_start);
+
+                                    if (empty($break->break_end)) {
+                                        $isInBreak = true; // currently on break
+                                    } else {
+                                        $end = Carbon::parse($break->break_end);
+                                        if ($end->greaterThan($start)) {
+                                            $duration = $start->diffInSeconds($end);
+                                            $totalSeconds += (int) round($duration);
+                                        }
+                                    }
+                                } catch (\Exception $e) {
+                                    \Log::error("Error calculating break duration for attendance ID: " . $attendance->id . " - " . $e->getMessage());
+                                }
+                            }
+                        }
+
+                        $attendance->totalBreakDuration = sprintf('%02d:%02d:%02d', intdiv($totalSeconds, 3600), intdiv($totalSeconds % 3600, 60), $totalSeconds % 60);
+                        $attendance->isInBreak = $isInBreak;
+
+                        return $attendance;
+                    })
+                    ->filter(function ($attendance) {
+                        return $attendance->isInBreak === true; // only return those currently on break
+                    })
+                    ->values();
+
+
+                // attendanceEmployee
+                /* *************** New Add End ****************************/
+
+                
+                return view('dashboard.dashboard', compact('arrEvents', 'announcements', 'employees', 'meetings', 'employeeAttendance', 'officeTime','disableCheckbox','isWorkFromHome','leaves','Todayleaves','attendanceEmployee','ThisMonthattendanceCount', 'LastMonthattendanceCount','breakLogs', 'totalBreakDuration','totalSeconds','hasOngoingBreak','leaveCounts','leaveTypes','leaveTypesAll','leaves_cc','FindOnBreakEmployee'));
             }
             else
             {
@@ -313,7 +461,7 @@ class HomeController extends Controller
 
                 $announcements = Announcement::orderBy('announcements.id', 'desc')->take(5)->where('created_by', '=', \Auth::user()->creatorId())->get();
 
-                $emp           = User::where('type', '=', 'employee')->where('created_by', '=', \Auth::user()->creatorId())->get();
+                $emp = User::where('type', '=', 'employee')->where('created_by', '=', \Auth::user()->creatorId())->get();
                 $countEmployee = count($emp);
 
                 $user      = User::where('type', '!=', 'employee')->where('created_by', '=', \Auth::user()->creatorId())->get();
@@ -329,6 +477,38 @@ class HomeController extends Controller
                 $notClockIn    = AttendanceEmployee::where('date', '=', $currentDate)->get()->pluck('employee_id');
 
                 $notClockIns    = Employee::where('created_by', '=', \Auth::user()->creatorId())->whereNotIn('id', $notClockIn)->get();
+
+
+                /* ****************************************************************** */
+
+
+                // notClockIns
+
+
+
+                $today = Carbon::today()->toDateString();
+                $notClockInDetails = [];
+
+                foreach ($notClockIns as $employee) {
+                    // Check if employee is on leave today
+                    $leave = LocalLeave::where('employee_id', $employee->id)
+                        ->where('status', 'Approved')
+                        ->whereDate('start_date', '<=', $today)
+                        ->whereDate('end_date', '>=', $today)
+                        ->whereIn('leave_type_id', [1, 2])
+                        ->with('leaveType') // assumes relation is defined
+                        ->first();
+
+                    $notClockInDetails[] = [
+                        'employee_id' => $employee->id,
+                        'employee_name' => $employee->name,
+                        'is_on_leave' => $leave ? true : false,
+                        'leave_type' => $leave ? ($leave->leaveType->title ?? 'N/A') : 'Absent',
+                    ];
+                }
+
+
+                /* ****************************************************************** */
                 $accountBalance = AccountList::where('created_by', '=', \Auth::user()->creatorId())->sum('initial_balance');
                 
                 $activeJob   = Job::where('status', 'active')->where('created_by', '=', \Auth::user()->creatorId())->count();
@@ -394,10 +574,10 @@ class HomeController extends Controller
                     return $attendance;
                 });
 
-                
+                // attendanceEmployee
                 /* *************** New Add End ****************************/
 
-                return view('dashboard.dashboard', compact('arrEvents', 'announcements', 'activeJob','inActiveJOb','meetings', 'countEmployee', 'countUser', 'countTicket', 'countOpenTicket', 'countCloseTicket', 'notClockIns', 'countEmployee', 'accountBalance', 'totalPayee', 'totalPayer','attendanceEmployee','leaves','Todayleaves','breakLogs', 'totalBreakDuration', 'totalSeconds','hasOngoingBreak'));
+                return view('dashboard.dashboard', compact('arrEvents', 'announcements', 'activeJob','inActiveJOb','meetings', 'countEmployee', 'countUser', 'countTicket', 'countOpenTicket', 'countCloseTicket', 'notClockIns', 'countEmployee', 'accountBalance', 'totalPayee', 'totalPayer','attendanceEmployee','leaves','Todayleaves','breakLogs', 'totalBreakDuration', 'totalSeconds','hasOngoingBreak','notClockInDetails'));
             }
         }
         else
@@ -426,19 +606,34 @@ class HomeController extends Controller
 
 
     // Private function to calculate leave days excluding weekends
-    private function getTotalLeaveDays($startDate, $endDate)
+    private function getTotalLeaveDays($startDate, $endDate,$leave_type_id,$half_day_type)
     {
-        // Parse the start and end dates
         $startDate = \Carbon\Carbon::parse($startDate);
         $endDate = \Carbon\Carbon::parse($endDate);
 
         $totalLeaveDays = 0;
 
-        // Loop from start date to end date
-        for ($date = $startDate; $date <= $endDate; $date->addDay()) {
-            // If the current day is not Saturday or Sunday, increment the total leave days
-            if (!$date->isWeekend()) {
-                $totalLeaveDays++;
+        if($leave_type_id != 5){
+            // Fetch all holidays in the date range
+            $holidays = \App\Models\Holiday::where('is_optional', 0)
+                        ->pluck('start_date')
+                        ->map(fn($date) => \Carbon\Carbon::parse($date)->format('Y-m-d'))
+                        ->toArray();
+
+            // echo "<pre>";print_r($holidays);exit;
+
+            for ($date = $startDate->copy(); $date <= $endDate; $date->addDay()) {
+                $formattedDate = $date->format('Y-m-d');
+
+                // Skip weekends and holidays
+                if (!$date->isWeekend() && !in_array($formattedDate, $holidays)) {
+                    if(($leave_type_id == 1 || $leave_type_id == 2) && $half_day_type != 'full_day'){
+                       $totalLeaveDays = $totalLeaveDays + 0.5; 
+                    }else{
+                       $totalLeaveDays++; 
+                    }
+                    
+                }
             }
         }
 

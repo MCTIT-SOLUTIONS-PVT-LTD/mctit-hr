@@ -47,9 +47,9 @@
                                                 <i class="ti ti-users"></i>
                                             </div>
                                             <div class="ms-3">
-                                                <small class="text-muted">{{ __('Total') }}</small>
+                                                <small class="text-muted">{{ __('This Month') }}</small>
                                                 <h6 class="m-0"><a
-                                                    href="#">{{ __('This Month Attandance') }}</a></h6>
+                                                    href="#">{{ __('Attandance') }}</a></h6>
                                             </div>
                                         </div>
                                     </div>
@@ -72,9 +72,9 @@
                                                 <i class="ti ti-ticket"></i>
                                             </div>
                                             <div class="ms-3">
-                                                <small class="text-muted">{{ __('Total') }}</small>
+                                                <small class="text-muted">{{ __('Last Month') }}</small>
                                                 <h6 class="m-0"><a
-                                                    href="#">{{ __('Last Month Attandance') }}</a></h6>
+                                                    href="#">{{ __('Attandance') }}</a></h6>
                                             </div>
                                         </div>
                                     </div>
@@ -97,9 +97,9 @@
                                                 <i class="ti ti-clock"></i>
                                             </div>
                                             <div class="ms-3">
-                                                <small class="text-muted">{{ __('Total') }}</small>
+                                                <small class="text-muted">{{ __('This Month') }}</small>
                                                 <h6 class="m-0"><a
-                                                    href="#">{{ __("This Month Holiday ") }}</a></h6>
+                                                    href="#">{{ __("Holiday ") }}</a></h6>
                                             </div>
                                         </div>
                                     </div>
@@ -122,10 +122,11 @@
                                         <div class="ms-3">
                                             <h5 class="mb-0">Allowed Leave</h5>
                                             <div>
-                                                <p class="text-muted text-sm mb-0">Total Sick Leave (SL):
-                                                    0</p>
-                                                <p class="text-muted text-sm mb-0">Total Casual Leave (CL):
-                                                    0</p>
+                                                @foreach($leaveTypesAll as $type)
+                                                    <p class="text-muted text-sm mb-0">
+                                                        Total {{ $type->title }} : {{ $type->days }}
+                                                    </p>
+                                                @endforeach
                                             </div>
                                         </div>
                                     </div>
@@ -134,8 +135,13 @@
                         </div>
                     </div>
 
+                    @php
+                        // Simulate the same leaveCounts structure
+                        // $leaveCounts = [leave_type_id => ['Approved' => x, 'Rejected' => y, 'Pending' => z]];
+                        // $leaveTypes = [leave_type_id => 'Leave Type Name'];
+                    @endphp
+                    {{-- Approved --}}
                     <div class="col-lg-4 col-md-6">
-
                         <div class="card stats-wrapper dash-info-card">
                             <div class="card-body p-3">
                                 <div class="d-flex align-items-center justify-content-between">
@@ -146,10 +152,12 @@
                                         <div class="ms-3">
                                             <h5 class="mb-0">Approved Leave</h5>
                                             <div>
-                                                <p class="text-muted text-sm mb-0">Total Sick Leave (SL):
-                                                    0</p>
-                                                <p class="text-muted text-sm mb-0">Total Casual Leave (CL):
-                                                    0</p>
+                                                @foreach ($leaveCounts as $leaveTypeId => $statuses)
+                                                    <p class="text-muted text-sm mb-0">
+                                                        Total {{ $leaveTypes[$leaveTypeId] ?? 'Unknown' }} :
+                                                        {{ $statuses['Approved'] ?? 0 }}
+                                                    </p>
+                                                @endforeach
                                             </div>
                                         </div>
                                     </div>
@@ -158,8 +166,8 @@
                         </div>
                     </div>
 
+                    {{-- Rejected --}}
                     <div class="col-lg-4 col-md-6">
-
                         <div class="card stats-wrapper dash-info-card">
                             <div class="card-body p-3">
                                 <div class="d-flex align-items-center justify-content-between">
@@ -170,10 +178,12 @@
                                         <div class="ms-3">
                                             <h5 class="mb-0">Rejected Leave</h5>
                                             <div>
-                                                <p class="text-muted text-sm mb-0">Total Sick Leave (SL):
-                                                    0</p>
-                                                <p class="text-muted text-sm mb-0">Total Casual Leave (CL):
-                                                    0</p>
+                                                @foreach ($leaveCounts as $leaveTypeId => $statuses)
+                                                    <p class="text-muted text-sm mb-0">
+                                                        Total {{ $leaveTypes[$leaveTypeId] ?? 'Unknown' }} :
+                                                        {{ $statuses['Rejected'] ?? 0 }}
+                                                    </p>
+                                                @endforeach
                                             </div>
                                         </div>
                                     </div>
@@ -181,10 +191,37 @@
                             </div>
                         </div>
                     </div>
+
+                    {{-- Pending --}}
+                    <!-- <div class="col-lg-4 col-md-6">
+                        <div class="card stats-wrapper dash-info-card">
+                            <div class="card-body p-3">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div class="d-flex align-items-center">
+                                        <div class="badge theme-avtar bg-secondary">
+                                            <i class="ti ti-file-report"></i>
+                                        </div>
+                                        <div class="ms-3">
+                                            <h5 class="mb-0">Pending Leave</h5>
+                                            <div>
+                                                @foreach ($leaveCounts as $leaveTypeId => $statuses)
+                                                    <p class="text-muted text-sm mb-0">
+                                                        Total {{ $leaveTypes[$leaveTypeId] ?? 'Unknown' }} :
+                                                        {{ $statuses['Pending'] ?? 0 }}
+                                                    </p>
+                                                @endforeach
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div> -->
                     
                 </div>
             </div>
         </div>
+       
         <div class="row">
         <div class="col-xxl-6 col-md-6" >
             <div class="card">
@@ -288,7 +325,11 @@
                                 </div>
                             </div>
                         </div>
-                       <!--  <div class="col-xxl-6 col-md-12">
+                        @if (!$hasOngoingBreak)
+                            <div class="col-xxl-6 col-md-12" id="total-break-widget" style="display: none;">
+                        @else
+                            <div class="col-xxl-6 col-md-12" id="total-break-widget">
+                        @endif
                             <div class="card">
                                 <div class="card-body p-3">
                                     <div class="d-flex align-items-center justify-content-between">
@@ -306,7 +347,7 @@
                                     </div>
                                 </div>
                             </div>
-                        </div> -->
+                        </div>
 
                         <script>
                             function updateBreakTime() {
@@ -350,6 +391,20 @@
                                     </div>
                                 @else
                                     <button type="submit" class="btn btn-primary w-100 disabled" disabled>{{ __('CLOCK IN') }}</button>
+
+                                    <div class="form-check">
+                                        {{ Form::checkbox(
+                                            'work_from_home',
+                                            1,
+                                            $employeeAttendance->work_from_home == 1,  // Check if already enabled
+                                            [
+                                                'class' => 'form-check-input update-work-from-home-class',
+                                                'id' => 'work_from_home_in',
+                                                'data-id' => $employeeAttendance->id
+                                            ]
+                                        ) }}
+                                        <label class="form-check-label" for="work_from_home_in">{{ __('Work from Home') }}</label>
+                                    </div>
                                 @endif
                                 {{ Form::close() }}
                             </div>
@@ -369,73 +424,104 @@
                     <!-- Break Time Management -->
                     <!-- Show Break Buttons Only if Employee is Clocked In -->
                     @if ($isClockedIn)
-                        <br />
-                        <hr />
-                        <div class="row mt-3" style="display: none;">
-                            <div class="col-6">
-                                <button id="start_break" class="btn btn-warning w-100"
-                                    onclick="startBreak()" 
-                                    {{ !empty($employeeAttendance) && $employeeAttendance->breaks()->whereNull('break_end')->exists() ? 'disabled' : '' }}>
-                                    {{ __('Start Break') }}
-                                </button>
+                        
+                        @if (!$hasOngoingBreak)
+                            <div id="break-log-card" style="display: none;">
+                        @else
+                            <div id="break-log-card">
+                        @endif
+                            <br />
+                            <hr />
+                            <div class="row mt-3">
+                                <div class="col-6">
+                                    <button id="start_break" class="btn btn-warning w-100"
+                                        onclick="startBreak()" 
+                                        {{ !empty($employeeAttendance) && $employeeAttendance->breaks()->whereNull('break_end')->exists() ? 'disabled' : '' }}>
+                                        {{ __('Start Break') }}
+                                    </button>
+                                </div>
+                                <div class="col-6">
+                                    <button id="end_break" class="btn btn-success w-100"
+                                        onclick="endBreak()"
+                                        {{ empty($employeeAttendance) || !$employeeAttendance->breaks()->whereNull('break_end')->exists() ? 'disabled' : '' }}>
+                                        {{ __('End Break') }}
+                                    </button>
+                                </div>
                             </div>
-                            <div class="col-6">
-                                <button id="end_break" class="btn btn-success w-100"
-                                    onclick="endBreak()"
-                                    {{ empty($employeeAttendance) || !$employeeAttendance->breaks()->whereNull('break_end')->exists() ? 'disabled' : '' }}>
-                                    {{ __('End Break') }}
-                                </button>
-                            </div>
-                        </div>
 
 
-                        <!-- Break Log -->
-                        <div class="card mt-3" style="display: none;">
-                            <div class="card-header">
-                                <h5>{{ __('Break Log') }}</h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="table-responsive">
-                                    <table class="table">
-                                        <thead>
-                                            <tr>
-                                                <th>{{ __('Break Start') }}</th>
-                                                <th>{{ __('Break End') }}</th>
-                                                <th>{{ __('Duration') }}</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="break-log">
-                                            @foreach ($breakLogs as $break)
+                            <!-- Break Log -->
+                            <div class="card mt-3">
+                                <div class="card-header">
+                                    <h5>{{ __('Break Log') }}</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table">
+                                            <thead>
                                                 <tr>
-                                                    <td>{{ \Carbon\Carbon::parse($break->break_start)->format('h:i A') }}</td>
-                                                    <td>
-                                                        @if ($break->break_end)
-                                                            {{\Carbon\Carbon::parse($break->break_end)->format('h:i A')}}
-                                                        @else
-                                                            <span class="badge bg-danger p-1 px-1">In Progress</span>
-                                                        @endif
-                                                    </td>
-                                                    <td>
-                                                        @if ($break->break_end)
-                                                            @php
-                                                                $start = \Carbon\Carbon::parse($break->break_start);
-                                                                $end = \Carbon\Carbon::parse($break->break_end);
-                                                                $diff = $start->diff($end);
-                                                                echo sprintf('%02d:%02d:%02d', $diff->h, $diff->i, $diff->s);
-                                                            @endphp
-                                                        @else
-                                                            --
-                                                        @endif
-                                                    </td>
+                                                    <th>{{ __('Break Start') }}</th>
+                                                    <th>{{ __('Break End') }}</th>
+                                                    <th>{{ __('Duration') }}</th>
                                                 </tr>
-                                            @endforeach
-                                        </tbody> 
-                                    </table>
+                                            </thead>
+                                            <tbody id="break-log">
+                                                @foreach ($breakLogs as $break)
+                                                    <tr>
+                                                        <td>{{ \Carbon\Carbon::parse($break->break_start)->format('h:i A') }}</td>
+                                                        <td>
+                                                            @if ($break->break_end)
+                                                                {{\Carbon\Carbon::parse($break->break_end)->format('h:i A')}}
+                                                            @else
+                                                                <span class="badge bg-danger p-1 px-1">In Progress</span>
+                                                            @endif
+                                                        </td>
+                                                        <td>
+                                                            @if ($break->break_end)
+                                                                @php
+                                                                    $start = \Carbon\Carbon::parse($break->break_start);
+                                                                    $end = \Carbon\Carbon::parse($break->break_end);
+                                                                    $diff = $start->diff($end);
+                                                                    echo sprintf('%02d:%02d:%02d', $diff->h, $diff->i, $diff->s);
+                                                                @endphp
+                                                            @else
+                                                                --
+                                                            @endif
+                                                        </td>
+                                                    </tr>
+                                                @endforeach
+                                            </tbody> 
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     @endif
 
+
+                    @if(count($FindOnBreakEmployee) > 0)
+                        <br />
+                        <hr />
+                        <div class="card">
+                            <div class="card-header">
+                                <h5>{{ __('ON-BREAK') }}</h5>
+                            </div>
+                            <div class="card-body">
+                                @php
+                                    $badgeClasses = ['bg-warning', 'bg-success', 'bg-danger', 'bg-info'];
+                                @endphp
+
+                                @foreach ($FindOnBreakEmployee as $OnBreakattendance)
+                                    @php
+                                        $randomClass = $badgeClasses[array_rand($badgeClasses)];
+                                    @endphp
+                                    <div class="badge {{ $randomClass }} p-2 px-3">
+                                        {{ !empty($OnBreakattendance->employee) ? $OnBreakattendance->employee->name : '' }}
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
 
                 </div>
             </div>
@@ -505,7 +591,7 @@
                                     <th>{{ __('CLOCK IN') }}</th>
                                     <th>{{ __('CLOCK OUT') }}</th>
                                     <th>{{ __('TOTAL HOURS') }}</th>
-                                    <!-- <th>{{ __('Break Log') }}</th>  -->
+                                    <th>{{ __('Break Log') }}</th> 
                                 </tr>
                             </thead>
                             <tbody class="list">
@@ -529,7 +615,7 @@
                                             @endif
                                         </td>
                                         <td>{{ $attendance->checkout_time_diff != '' ? $attendance->checkout_time_diff : '00:00:00' }}</td>
-                                        <!-- <td>{{ $attendance->totalBreakDuration ?? '00:00:00' }}</td> -->
+                                        <td>{{ $attendance->totalBreakDuration ?? '00:00:00' }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -540,7 +626,7 @@
         </div>
     </div>
         @can('Manage Leave')
-        <div class="col-xl-8 col-lg-8 col-md-8">
+        <div class="col-xl-5 col-lg-5 col-md-5">
             <div class="card">
                 <div class="card-header card-body table-border-style">
                     <h5>{{ __('Scheduled Leave Overview') }}</h5>
@@ -548,7 +634,7 @@
                 <div class="card-body">
                     {{-- <h5> </h5> --}}
                     <div class="table-responsive">
-                        <table class="table" id="pc-dt-simple">
+                        <table class="table" id="pc-dt-simple-123">
                             <thead>
                                 <tr>
                                     @if (\Auth::user()->type != 'employee')
@@ -557,10 +643,10 @@
                                     <th>{{ __('Leave Type') }}</th>
                                     <th>{{ __('Leave Date') }}</th>
                                     <!-- <th>{{ __('End Date') }}</th> -->
-                                    <th>{{ __('Total Days') }}</th>
+                                    <!-- <th>{{ __('Total Days') }}</th> -->
                                     <!-- <th>{{ __('Leave Reason') }}</th> -->
                                     <th>{{ __('status') }}</th>
-                                    <th>{{ __('Applied On') }}</th>
+                                    <!-- <th>{{ __('Applied On') }}</th> -->
                                 </tr>
                             </thead>
                             <tbody>
@@ -571,6 +657,9 @@
                                             </td>
                                         @endif
                                         <td>{{ !empty($leave->leave_type_id) ? $leave->leaveType->title : '' }}
+                                            @if ($leave->leave_type_id == 5 && !empty($leave->early_time))
+                                                <br /> <span class="badge bg-primary">{{ $leave->early_time }}</span>
+                                            @endif
                                             <br />
                                             @switch($leave->half_day_type)
                                                 @case('morning')
@@ -593,7 +682,7 @@
                                         </td>
                                         <!-- <td>{{ \Auth::user()->dateFormat($leave->end_date) }}</td> -->
 
-                                        <td>{{ $leave->total_leave_days }}</td>
+                                        <!-- <td>{{ $leave->total_leave_days }}</td> -->
                                         <!-- <td style="white-space: normal; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word;width: 350px;">{{ $leave->leave_reason }}</td> -->
                                         <td>
                                             @if ($leave->status == 'Pending')
@@ -604,9 +693,13 @@
                                                 <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
                                             @elseif($leave->status == "Draft")
                                                 <div class="badge bg-info p-2 px-3 ">{{ $leave->status }}</div>
+                                            @elseif($leave->status == "Cancelled")
+                                                <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
+                                            @elseif($leave->status == 'Pre-Approved')
+                                                <div class="badge bg-success p-2 px-3 ">{{ $leave->status }}</div>
                                             @endif
                                         </td>
-                                        <td>{{ \Carbon\Carbon::parse($leave->applied_on)->format('d/m/Y') }}</td>
+                                        <!-- <td>{{ \Carbon\Carbon::parse($leave->applied_on)->format('d/m/Y') }}</td> -->
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -615,6 +708,100 @@
                 </div>
             </div>
         </div>
+
+        @if($leaves_cc)
+        <div class="col-xl-7 col-lg-7 col-md-7">
+            <div class="card">
+                <div class="card-header card-body table-border-style">
+                    <h5>{{ __('Team Members\' CC Leave Overview') }}</h5>
+                </div>
+                <div class="card-body">
+                    {{-- <h5> </h5> --}}
+                    <div class="table-responsive">
+                        <table class="table" id="pc-dt-simple">
+                            <thead>
+                                <tr>
+                                    <th>{{ __('Employee') }}</th>
+                                    <th>{{ __('Leave Type') }}</th>
+                                    <th>{{ __('Leave Date') }}</th>
+                                    <!-- <th>{{ __('End Date') }}</th> -->
+                                    <!-- <th>{{ __('Total Days') }}</th> -->
+                                    <!-- <th>{{ __('Leave Reason') }}</th> -->
+                                    <th>{{ __('status') }}</th>
+                                    <!-- <th>{{ __('Applied On') }}</th> -->
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($leaves_cc as $leave)
+                                    <tr>
+                                        <td>{{ !empty($leave->employee_id) ? $leave->employees->name : '' }}
+                                            </td>
+                                        <td>{{ !empty($leave->leave_type_id) ? $leave->leaveType->title : '' }}
+                                            
+                                            @switch($leave->half_day_type)
+                                                @case('morning')
+                                                    <br />
+                                                    <div class="badge bg-dark">{{ __('1st H/D (Morning)') }}</div>
+                                                    @break
+                                                @case('afternoon')
+                                                    <br />
+                                                    <div class="badge bg-danger">{{ __('2nd H/D (Afternoon)') }}</div>
+                                                    @break
+                                                @default
+                                                    <div></div>
+                                            @endswitch
+
+                                            @if ($leave->leave_type_id == 5 && !empty($leave->early_time))
+                                                <span class="badge bg-primary">{{ $leave->early_time }}</span>
+                                            @endif
+                                        </td>
+                                        <td>
+                                            @if($leave->start_date == $leave->end_date)
+                                                {{ \Carbon\Carbon::parse($leave->start_date)->format('d/m/Y') }}
+                                            @else
+                                                {{ \Carbon\Carbon::parse($leave->start_date)->format('d/m/Y') }} <b>To</b> {{ \Carbon\Carbon::parse($leave->end_date)->format('d/m/Y') }}
+                                            @endif
+                                            
+                                        </td>
+                                        <!-- <td>{{ \Auth::user()->dateFormat($leave->end_date) }}</td> -->
+
+                                        <!-- <td>{{ $leave->total_leave_days }}</td> -->
+                                        <!-- <td style="white-space: normal; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word;width: 350px;">{{ $leave->leave_reason }}</td> -->
+                                        <td>
+                                            @if ($leave->status == 'Pending')
+                                                <div class="badge bg-warning p-2 px-3 ">{{ $leave->status }}</div>
+                                            @elseif ($leave->status == 'In_Process')
+                                                <div class="badge p-2 px-3" style="background:#9D00FF;">In-Process</div>
+                                            @elseif ($leave->status == 'Manager_Approved')
+                                                <div class="badge p-2 px-3" style="background:#004000;">Manager-Approved</div>
+                                            @elseif ($leave->status == 'Manager_Rejected')
+                                                <div class="badge p-2 px-3" style="background:#800040;">Manager-Rejected</div>
+                                            @elseif ($leave->status == 'Partially_Approved')
+                                                <div class="badge p-2 px-3" style="background:#9ACD32;">Partially-Approved</div>
+                                            <!-- @elseif (in_array($leave->status, ['In_Process', 'Manager_Approved','Partially_Approved']) && \Auth::user()->type === 'employee')
+                                                <div class="badge p-2 px-3" style="background:#FA5F55;">In-Process</div> -->
+                                            @elseif($leave->status == 'Approved')
+                                                <div class="badge bg-success p-2 px-3 ">{{ $leave->status }}</div>
+                                            @elseif($leave->status == "Reject")
+                                                <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
+                                            @elseif($leave->status == "Draft")
+                                                <div class="badge bg-info p-2 px-3 ">{{ $leave->status }}</div>
+                                            @elseif($leave->status == "Cancelled")
+                                                <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
+                                            @elseif($leave->status == 'Pre-Approved')
+                                                <div class="text-success"><b>{{ $leave->status }}</b></div>
+                                            @endif
+                                        </td>
+                                        <!-- <td>{{ \Carbon\Carbon::parse($leave->applied_on)->format('d/m/Y') }}</td> -->
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        @endif
         @endcan
 
         <div class="col-xl-12 col-lg-12 col-md-12" style="display:none;">
@@ -913,10 +1100,13 @@
                                             </tr>
                                         </thead>
                                         <tbody class="list">
-                                            @foreach ($notClockIns as $notClockIn)
+                                            @foreach ($notClockInDetails as $notClockIn)
                                                 <tr>
-                                                    <td>{{ $notClockIn->name }}</td>
-                                                    <td><span class="absent-btn">{{ __('Absent') }}</span></td>
+                                                    <td>{{ $notClockIn['employee_name'] }}</td>
+                                                    <td><span class="absent-btn {{ $notClockIn['leave_type'] != 'Absent' ? 'text-danger' : '' }}">
+                                                            {{ $notClockIn['leave_type'] }}
+                                                        </span>
+                                                    </td>
                                                 </tr>
                                             @endforeach
                                         </tbody>
@@ -945,7 +1135,7 @@
                                                 <th>{{ __('Early Leaving') }}</th>
                                                 <th>{{ __('Overtime') }}</th> -->
                                                 <th>{{ __('Total Hours') }}</th>
-                                                <!-- <th>{{ __('Total Break Log') }}</th> -->
+                                                <th>{{ __('Total Break Log') }}</th>
                                                 <!-- @if (Gate::check('Edit Attendance') || Gate::check('Delete Attendance'))
                                                     <th width="200px">{{ __('Action') }}</th>
                                                 @endif -->
@@ -963,7 +1153,7 @@
                                                             @endif
 
                                                             @if ($attendance->isInBreak)
-                                                                <br /><span class="badge bg-danger p-1 px-1">In Break</span>
+                                                                <br /><span class="badge bg-danger p-1 px-1">On Break</span>
                                                             @endif
                                                         </td>
                                                     @endif
@@ -983,7 +1173,7 @@
                                                     <td>{{ $attendance->early_leaving }}</td>
                                                     <td>{{ $attendance->overtime }}</td> -->
                                                     <td>{{ $attendance->checkout_time_diff != '' ? $attendance->checkout_time_diff : '00:00:00' }}</td>
-                                                    <!-- <td>{{ $attendance->totalBreakDuration ?? '00:00:00' }}</td> -->
+                                                    <td>{{ $attendance->totalBreakDuration ?? '00:00:00' }}</td>
                                                    <!--  @if (Gate::check('Edit Attendance') || Gate::check('Delete Attendance'))
                                                     <td class="Action">
                                                         
@@ -1119,6 +1309,10 @@
                                                     </td>
                                                 @endif
                                                 <td>{{ !empty($leave->leave_type_id) ? $leave->leaveType->title : '' }}
+                                                    @if ($leave->leave_type_id == 5 && !empty($leave->early_time))
+                                                        <br />
+                                                        <span class="badge bg-primary">{{ $leave->early_time }}</span>
+                                                    @endif
                                                     <br />
                                                     @switch($leave->half_day_type)
                                                         @case('morning')
@@ -1146,12 +1340,26 @@
                                                 <td>
                                                     @if ($leave->status == 'Pending')
                                                         <div class="badge bg-warning p-2 px-3 ">{{ $leave->status }}</div>
+                                                    @elseif ($leave->status == 'In_Process')
+                                                        <div class="badge p-2 px-3" style="background:#9D00FF;">In-Process</div>
+                                                    @elseif ($leave->status == 'Manager_Approved')
+                                                        <div class="badge p-2 px-3" style="background:#004000;">Manager-Approved</div>
+                                                    @elseif ($leave->status == 'Manager_Rejected')
+                                                        <div class="badge p-2 px-3" style="background:#800040;">Manager-Rejected</div>
+                                                    @elseif ($leave->status == 'Partially_Approved')
+                                                        <div class="badge p-2 px-3" style="background:#9ACD32;">Partially-Approved</div>
+                                                    <!-- @elseif (in_array($leave->status, ['In_Process', 'Manager_Approved','Partially_Approved']) && \Auth::user()->type === 'employee')
+                                                        <div class="badge p-2 px-3" style="background:#FA5F55;">In-Process</div> -->
                                                     @elseif($leave->status == 'Approved')
                                                         <div class="badge bg-success p-2 px-3 ">{{ $leave->status }}</div>
                                                     @elseif($leave->status == "Reject")
                                                         <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
                                                     @elseif($leave->status == "Draft")
                                                         <div class="badge bg-info p-2 px-3 ">{{ $leave->status }}</div>
+                                                    @elseif($leave->status == "Cancelled")
+                                                        <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
+                                                    @elseif($leave->status == 'Pre-Approved')
+                                                        <div class="text-success"><b>{{ $leave->status }}</b></div>
                                                     @endif
                                                 </td>
                                                 <td>{{ \Carbon\Carbon::parse($leave->applied_on)->format('d/m/Y') }}</td>
@@ -1281,6 +1489,9 @@
                                                     </td>
                                                 @endif
                                                 <td>{{ !empty($leave->leave_type_id) ? $leave->leaveType->title : '' }}
+                                                    @if ($leave->leave_type_id == 5 && !empty($leave->early_time))
+                                                        <span class="badge bg-primary">{{ $leave->early_time }}</span>
+                                                    @endif
                                                     <br />
                                                     @switch($leave->half_day_type)
                                                         @case('morning')
@@ -1308,12 +1519,26 @@
                                                 <td>
                                                     @if ($leave->status == 'Pending')
                                                         <div class="badge bg-warning p-2 px-3 ">{{ $leave->status }}</div>
+                                                    @elseif ($leave->status == 'In_Process')
+                                                        <div class="badge p-2 px-3" style="background:#9D00FF;">In-Process</div>
+                                                    @elseif ($leave->status == 'Manager_Approved')
+                                                        <div class="badge p-2 px-3" style="background:#004000;">Manager-Approved</div>
+                                                    @elseif ($leave->status == 'Manager_Rejected')
+                                                        <div class="badge p-2 px-3" style="background:#800040;">Manager-Rejected</div>
+                                                    @elseif ($leave->status == 'Partially_Approved')
+                                                        <div class="badge p-2 px-3" style="background:#9ACD32;">Partially-Approved</div>
+                                                    <!-- @elseif (in_array($leave->status, ['In_Process', 'Manager_Approved','Partially_Approved']) && \Auth::user()->type === 'employee')
+                                                        <div class="badge p-2 px-3" style="background:#FA5F55;">In-Process</div> -->
                                                     @elseif($leave->status == 'Approved')
                                                         <div class="badge bg-success p-2 px-3 ">{{ $leave->status }}</div>
                                                     @elseif($leave->status == "Reject")
                                                         <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
                                                     @elseif($leave->status == "Draft")
                                                         <div class="badge bg-info p-2 px-3 ">{{ $leave->status }}</div>
+                                                    @elseif($leave->status == "Cancelled")
+                                                        <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
+                                                    @elseif($leave->status == 'Pre-Approved')
+                                                        <div class="text-success"><b>{{ $leave->status }}</b></div>
                                                     @endif
                                                 </td>
                                                 <td>{{ \Carbon\Carbon::parse($leave->applied_on)->format('d/m/Y') }}</td>
@@ -1556,4 +1781,68 @@
         }
     </script>
     @endif
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const checkbox = document.querySelector('.update-work-from-home-class');
+
+            if (checkbox) {
+                checkbox.addEventListener('change', function () {
+                    const isChecked = this.checked ? 1 : 0;
+                    const attendanceId = this.getAttribute('data-id');
+
+                    fetch("{{ url('attendanceemployee/update-work-from-home') }}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({
+                            id: attendanceId,
+                            work_from_home: isChecked
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            console.log('Work from Home status updated.');
+                            // alert('Work from Home status updated.');
+                            toastr.success(data.message);
+                        } else {
+                            alert('Error updating status');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                    });
+                });
+            }
+        });
+    </script>
+
+    <script>
+        function toggleBreakLog() {
+            let workFromHome = document.getElementById('work_from_home_in');
+            let breakLogCard = document.getElementById('break-log-card');
+            let breakWidgetCard = document.getElementById('break-widget-card');
+            let totalBreakWidget = document.getElementById('total-break-widget');
+            const show = workFromHome && workFromHome.checked;
+
+            if (breakLogCard) breakLogCard.style.display = show ? 'block' : 'none';
+            if (breakWidgetCard) breakWidgetCard.style.display = show ? 'block' : 'none';
+            if (totalBreakWidget) totalBreakWidget.style.display = show ? 'block' : 'none';
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const workFromHomeCheckbox = document.getElementById('work_from_home_in');
+
+            if (workFromHomeCheckbox) {
+                toggleBreakLog(); // On page load
+                workFromHomeCheckbox.addEventListener('change', toggleBreakLog); // On change
+            }
+        });
+    </script>
 @endpush

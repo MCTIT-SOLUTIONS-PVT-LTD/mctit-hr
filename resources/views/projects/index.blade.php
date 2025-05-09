@@ -28,6 +28,8 @@
                             <tr>
                                 <th>{{ __('Project Name') }}</th>
                                 <!-- <th>{{ __('Created By') }}</th> -->
+                                <th>{{ __('Clients') }}</th>
+                                <th>{{ __('Managers') }}</th>
                                 <th>{{ __('Assigned Employees') }}</th>
                                 <th>{{ __('Created At') }}</th>
                                 @if (Gate::check('Edit Project') || Gate::check('Delete Project'))
@@ -41,17 +43,37 @@
                                     <td>{{ $project->name }}</td>
                                     <!-- <td>{{ $project->creator ? $project->creator->name : 'Unknown' }}</td> -->
                                     <td>
-                                        @if($project->employees->count() > 0)
-                                            @foreach($project->employees as $employee)
-                                                <span class="badge bg-primary">{{ $employee->name }}</span>
+                                        @if($project->client_names && count($project->client_names) > 0)
+                                            <div class="d-flex flex-wrap">
+                                                @foreach($project->client_names as $clientName)
+                                                    <span class="badge bg-secondary m-1">{{ $clientName }}</span>
+                                                @endforeach
+                                            </div>
+                                        @else
+                                            <span class="text-muted">No clients assigned</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        <div class="d-flex flex-wrap">
+                                            @foreach ($project->managers as $managerName)
+                                                <span class="badge bg-info m-1">{{ $managerName }}</span>
                                             @endforeach
+                                        </div>
+                                    </td>
+                                    <td>
+                                        @if($project->employees->count() > 0)
+                                            <div class="d-flex flex-wrap">
+                                                @foreach($project->employees as $employee)
+                                                    <span class="badge bg-primary m-1">{{ $employee->name }}</span>
+                                                @endforeach
+                                            </div>
                                         @else
                                             <span class="text-muted">No employees assigned</span>
                                         @endif
                                     </td>
                                     <td>{{ $project->created_at }}</td>
+                                    @if (Gate::check('Edit Project') || Gate::check('Delete Project'))
                                     <td class="Action">
-                                        @if (Gate::check('Edit Project') || Gate::check('Delete Project'))
                                         <div class="dt-buttons">
                                         <span>
                                                 @can('Edit Project')
@@ -78,8 +100,8 @@
                                                 @endcan
                                             </span>
                                         </div>
-                                        @endif
                                     </td>
+                                    @endif
                                 </tr>
                             @endforeach
                         </tbody>

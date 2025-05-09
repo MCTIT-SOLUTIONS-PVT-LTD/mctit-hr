@@ -15,10 +15,12 @@ class Leave extends Model
         'total_leave_days',
         'leave_reason',
         'remark',
+        'remark_cancelled',
         'status',
         'created_by',
         'half_day_type',
         'cc_email',
+        'early_time',
     ];
 
     protected $casts = [
@@ -33,5 +35,22 @@ class Leave extends Model
     public function employees()
     {
         return $this->hasOne('App\Models\Employee', 'id', 'employee_id');
+    }
+
+    public function managerUsers()
+    {
+        return $this->belongsToMany(Employee::class, 'users', 'id', 'id')
+            ->whereIn('id', $this->managers ?? []);
+    }
+
+    public function managers()
+    {
+        return $this->hasMany(LeaveManager::class);
+    }
+
+    // In LocalLeave model
+    public function leaveManagers()
+    {
+        return $this->hasMany(\App\Models\LeaveManager::class, 'leave_id');
     }
 }

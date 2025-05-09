@@ -28,8 +28,13 @@
                         </tr>
                         <tr>
                             <th>{{ __('Leave Type ') }}</th>
-                            <td><b>{{ !empty($leavetype->title) ? $leavetype->title : '' }}</b></td>
+                            <td><b>{{ !empty($leavetype->title) ? $leavetype->title : '' }}</b>
+                                @if ($leave->leave_type_id == 5 && !empty($leave->early_time))
+                                    <span class="badge bg-primary">{{ $leave->early_time }}</span>
+                                @endif
+                            </td>
                         </tr>
+                        @if ($leave->leave_type_id != 5)
                         <tr>
                             <th>{{ __('Leave(Full/Half Day) ') }}</th>
                             <td>
@@ -48,6 +53,7 @@
                                 @endswitch
                             </td>
                         </tr>
+                        @endif
                         <tr>
                             <th>{{ __('Appplied On') }}</th>
                             <td>{{ \Carbon\Carbon::parse($leave->applied_on)->format('d/m/Y') }}</td>
@@ -64,7 +70,7 @@
                         </tr>
                         <tr>
                             <th>{{ __('Leave Reason') }}</th>
-                            <td>{{ !empty($leave->leave_reason) ? $leave->leave_reason : '' }}</td>
+                            <td style="white-space: normal; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word;">{{ !empty($leave->leave_reason) ? $leave->leave_reason : '' }}</td>
                         </tr>
                         <tr>
                             <th>{{ __('Status') }}</th>
@@ -77,25 +83,51 @@
                                     <div class="badge bg-danger">{{ $leave->status }}</div>
                                 @elseif($leave->status == "Draft")
                                     <div class="badge bg-info">{{ $leave->status }}</div>
+                                @elseif($leave->status == "Cancelled")
+                                    <div class="badge bg-danger">{{ $leave->status }}</div>
+                                @elseif($leave->status == 'Pre-Approved')
+                                    <div class="badge bg-success">{{ $leave->status }}</div>
                                 @endif
                             </td>
                         </tr>
+                        @if (Auth::user()->type != 'employee' && $leave->status != "Cancelled")
+                            <tr>
+                                <td colspan="2">
+                                    
+                                    <div class="form-group">
+                                        <label for="remark">{{ __('Remark') }}</label>
+                                        {{ Form::textarea('remark', $leave->remark, ['class' => 'form-control grammer_textarea', 'placeholder' => __('Leave Remark'), 'rows' => '3']) }}
+                                    </div>
+                                </td>
+                            </tr>
+                        @else
+                            <tr>
+                                <th>{{ __('Remark') }}</th>
+                                <td>
+                                    @if (Auth::user()->type != 'employee' && $leave->status != "Cancelled")
+                                        {{ Form::textarea('remark', $leave->remark, ['class' => 'form-control grammer_textarea', 'placeholder' => __('Leave Remark'), 'rows' => '3']) }}
+                                    @else
+                                        {{ !empty($leave->remark) ? $leave->remark : '' }}
+                                    @endif
+                                </td>
+                            </tr>
+                        @endif
+
+                        @if($leave->status == "Cancelled")
                         <tr>
-                            <th>{{ __('Remark') }}</th>
+                            <th>{{ __('Cancelled Remark') }}</th>
                             <td>
-                                @if (Auth::user()->type != 'employee')
-                                    {{ Form::textarea('remark', $leave->remark, ['class' => 'form-control grammer_textarea', 'placeholder' => __('Leave Remark'), 'rows' => '3']) }}
-                                @else
-                                    {{ !empty($leave->remark) ? $leave->remark : '' }}
-                                @endif
+                               <span style="color:red;">{{ !empty($leave->remark_cancelled) ? $leave->remark_cancelled : '' }}</span>
                             </td>
                         </tr>
+                        @endif
+                        
                         <input type="hidden" value="{{ $leave->id }}" name="leave_id">
                         <input type="hidden" value="samepage" name="leave_page">
                     </table>
                 </div>
                 <br />
-                @if (Auth::user()->type == 'company' || Auth::user()->type == 'hr' || Auth::user()->type == 'CEO')
+                @if ((Auth::user()->type == 'company' || Auth::user()->type == 'hr' || Auth::user()->type == 'CEO') && $leave->status != "Cancelled")
                 <div class="modal-footer">
                     <input type="submit" value="{{ __('Approved') }}" class="btn btn-success rounded" name="status" style="margin-right: 10px;">
                     <input type="submit" value="{{ __('Reject') }}" class="btn btn-danger rounded" name="status">
