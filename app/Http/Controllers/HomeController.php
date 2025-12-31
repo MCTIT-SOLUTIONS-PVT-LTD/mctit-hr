@@ -20,6 +20,8 @@ use App\Models\Leave as LocalLeave;
 use App\Models\FinancialYear;
 use Carbon\Carbon;
 use App\Models\LeaveType;
+use App\Models\Holiday;
+use Illuminate\Support\Facades\DB;
 
 
 class HomeController extends Controller
@@ -45,14 +47,36 @@ class HomeController extends Controller
             $user = Auth::user();
             $leaves = [];
             $Todayleaves = [];
+            $NextDayLeaves = [];
+            $nextWorkingDay = '';
             $attendanceEmployee = [];
             $ThisMonthattendanceCount = 0;
             $LastMonthattendanceCount = 0;
             $totalSeconds = 0;
             $hasOngoingBreak = false;
+            $relievedCount = 0;
+            $thisMonthNetHourse = 0;
+            $lastMonthNetHourse = 0;
 
             $breakLogs = collect(); // Initialize empty collection for break logs
             $totalBreakDuration = '00:00:00'; // Default to zero time
+
+
+            // Today's Clock Out records
+            $todaysClockOut = AttendanceEmployee::whereDate('date', Carbon::today())
+                                ->where('clock_out', '!=', "00:00:00")
+                                ->with('employee') // assumes relation AttendanceEmployee -> employee
+                                ->orderBy('clock_out', 'desc')
+                                ->get();
+
+            // Count (if needed separately)
+            $todaysClockOutCount = $todaysClockOut->count();
+
+            $startOfMonth = Carbon::now()->startOfMonth();
+            $endOfMonth   = Carbon::now()->endOfMonth();
+
+            $monthlyHolidayCount = Holiday::whereBetween('start_date', [$startOfMonth, $endOfMonth])
+                ->count();
 
             if (\Auth::user()->can('Manage Leave')) {
                 // Get current date and current month
@@ -99,8 +123,12 @@ class HomeController extends Controller
                         foreach ($breakLogs as $break) {
                             if (!empty($break->break_start) && !empty($break->break_end)) {
                                 try {
-                                    $start = Carbon::parse($break->break_start);
-                                    $end = Carbon::parse($break->break_end);
+
+                                    $startTime = $break->break_start_date.' '.$break->break_start;
+                                    $endTime = $break->break_end_date.' '.$break->break_end;
+                                    
+                                    $start = Carbon::parse($startTime);
+                                    $end = Carbon::parse($endTime);
 
                                     // Ensure valid duration
                                     if ($end->greaterThan($start)) {
@@ -145,6 +173,23 @@ class HomeController extends Controller
                         ->whereDate('date', now()->toDateString())
                         ->first();
 
+
+                    if (!$employeeAttendance) {
+                        $date = date("Y-m-d");
+                        $currentHour = date("H");
+                        $previousDate = date('Y-m-d', strtotime($date . ' -1 day'));
+
+                        if ($currentHour < Get_MaxCheckOutTime()) {
+
+                            $employeeAttendance = AttendanceEmployee::where('employee_id', $emp)
+                                    ->whereDate('date', $previousDate)
+                                    ->where('clock_out', '=', '00:00:00')
+                                    ->first();
+                        }
+                    }
+
+                    
+
                     // Fetch break logs for today's attendance
                     if ($employeeAttendance) {
                         $breakLogs = $employeeAttendance->breaks()->orderBy('break_start', 'desc')->get();
@@ -159,12 +204,14 @@ class HomeController extends Controller
                         foreach ($breakLogs as $break) {
                             if (!empty($break->break_start)) {
                                 try {
+                                    $startTime = $break->break_start_date.' '.$break->break_start;  // Replace with dynamic start time
+                                    $endTime = $break->break_end_date.' '.$break->break_end;    // Replace with dynamic end time
                                     // Parse break start time
-                                    $start = Carbon::parse($break->break_start);
+                                    $start = Carbon::parse($startTime);
                                     
                                     // If break has ended, use its recorded end time
-                                    if (!empty($break->break_end)) {
-                                        $end = Carbon::parse($break->break_end);
+                                    if (!empty($endTime)) {
+                                        $end = Carbon::parse($endTime);
                                     } else {
                                         // If break is in progress, use current time as end time
                                         $end = Carbon::now();
@@ -184,6 +231,8 @@ class HomeController extends Controller
                                 }
                             }
                         }
+
+                        // echo "<pre>";print_r($breakLogs);exit;
                         // exit;
                         // Ensure totalSeconds is non-negative
                         $totalSeconds = max(0, (int) round($totalSeconds)); // Round and cast to integer
@@ -195,6 +244,7 @@ class HomeController extends Controller
                     // echo "<pre>";print_r($hasOngoingBreak);exit;
 
                 } else {
+                    $creatorId = \Auth::user()->creatorId();
                     // For non-employees (e.g., admin)
                     $leaves = LocalLeave::where('created_by', '=', \Auth::user()->creatorId())
                         // ->where('status', '=', 'Pending')  
@@ -219,7 +269,7 @@ class HomeController extends Controller
                         // Calculate total leave days for each leave if not already calculated
                         foreach ($Todayleaves as $Todayleave) {
                             if ($Todayleave->total_leave_days == 0) {
-                                $Todayleave->total_leave_days = $this->getTotalLeaveDays($Todayleave->start_date, $Todayleave->end_date,$Todayleave->leave_type_id,$Todayleave->half_day_type);
+                                $Todayleave->total_leave_days = getTotalLeaveDays($Todayleave->start_date, $Todayleave->end_date,$Todayleave->leave_type_id,$Todayleave->half_day_type);
                             }
                         }
                     }
@@ -228,16 +278,66 @@ class HomeController extends Controller
                 // Calculate total leave days for each leave if not already calculated
                 foreach ($leaves as $leave) {
                     if ($leave->total_leave_days == 0) {
-                        $leave->total_leave_days = $this->getTotalLeaveDays($leave->start_date, $leave->end_date,$leave->leave_type_id,$leave->half_day_type);
+                        $leave->total_leave_days = getTotalLeaveDays($leave->start_date, $leave->end_date,$leave->leave_type_id,$leave->half_day_type);
+                    }
+                }
+
+                $today = Carbon::today();
+                $creatorId = \Auth::user()->creatorId();
+
+                // ✅ Determine next working day (skipping weekends)
+                $nextWorkingDay = $today->copy()->addDay();
+                while ($nextWorkingDay->isWeekend()) {
+                    $nextWorkingDay->addDay();
+                }
+
+                // ✅ Fetch next working day's approved leaves
+                $NextDayLeaves = LocalLeave::where('created_by', $creatorId)
+                    ->where('status', '!=', 'Draft')
+                    ->whereDate('start_date', '<=', $nextWorkingDay)
+                    ->whereDate('end_date', '>=', $nextWorkingDay)
+                    ->with(['employees', 'leaveType'])
+                    ->orderBy('start_date', 'desc')
+                    ->get();
+
+                foreach ($NextDayLeaves as $leave) {
+                    if ($leave->total_leave_days == 0) {
+                        $leave->total_leave_days = getTotalLeaveDays(
+                            $leave->start_date,
+                            $leave->end_date,
+                            $leave->leave_type_id,
+                            $leave->half_day_type
+                        );
                     }
                 }
             }
 
 
+
+
             if($user->type == 'employee')
             {
 
-                $emp = Employee::where('user_id', '=', $user->id)->first();
+                // Current month & year
+                $month = Carbon::now()->month;
+                $year  = Carbon::now()->year;
+
+                // Last month & year
+                $lastMonthDate = Carbon::now()->subMonth();
+                $lastMonth     = $lastMonthDate->month;
+                $lastYear      = $lastMonthDate->year;
+
+                $emp = Employee::where('user_id', $user->id)->first();
+
+                // This month stats
+                $thisMonthStats = get_employee_monthly_work_stats($emp->id, $month, $year);
+                $thisMonthNetHourse   = $thisMonthStats['total_net_hhmmss'];
+
+                // Last month stats
+                $lastMonthStats = get_employee_monthly_work_stats($emp->id, $lastMonth, $lastYear);
+                $lastMonthNetHourse   = $lastMonthStats['total_net_hhmmss'];
+
+                
 
                 $announcements = Announcement::orderBy('announcements.id', 'desc')->take(5)->leftjoin('announcement_employees', 'announcements.id', '=', 'announcement_employees.announcement_id')->where('announcement_employees.employee_id', '=', $emp->id)->orWhere(
                     function ($q){
@@ -279,7 +379,21 @@ class HomeController extends Controller
 
                 $date               = date("Y-m-d");
                 $time               = date("H:i:s");
+                $currentHour = date("H");
                 $employeeAttendance = AttendanceEmployee::orderBy('id', 'desc')->where('employee_id', '=', !empty(\Auth::user()->employee) ? \Auth::user()->employee->id : 0)->where('date', '=', $date)->first();
+
+                // If no attendance is found for the current date, check for the previous day
+                if (!$employeeAttendance) {
+                    $previousDate = date('Y-m-d', strtotime($date . ' -1 day'));
+
+                    if ($currentHour < Get_MaxCheckOutTime()) {
+                        $employeeAttendance = AttendanceEmployee::orderBy('id', 'desc')
+                        ->where('employee_id', '=', !empty(\Auth::user()->employee) ? \Auth::user()->employee->id : 0)
+                        ->where('date', '=', $previousDate)
+                        ->where('clock_out', '=', '00:00:00')
+                        ->first();
+                    }
+                }
 
                 // echo "<pre>";print_r($employeeAttendance);exit;
 
@@ -339,7 +453,7 @@ class HomeController extends Controller
                         // Count only if date within financial year
                         if ($date->between(Carbon::parse($activeYear->start_date), Carbon::parse($activeYear->end_date))) {
                             // Count 0.5 for half-day (only if single day leave)
-                            if ($start->equalTo($end) && $halfDayType != 'full_day') {
+                            if ($halfDayType != 'full_day') {
                                 $days += 0.5;
                             } else {
                                 $days += 1;
@@ -356,11 +470,51 @@ class HomeController extends Controller
                 $leaveTypes = LeaveType::pluck('title', 'id');
 
 
+                $leaveTypes = getLeaveTypes(['SL', 'CL']);
+                $typeIds    = $leaveTypes->keys()->all();
 
-                $leaveTypesAll = LeaveType::where(function ($query) {
-                                    $query->where('code', 'like', '%SL%')
-                                          ->orWhere('code', 'like', '%CL%');
-                                })->get()->keyBy('id');
+                // --- Active financial year (fallback to utility) ---
+                $fy      = DB::table('financial_years')->where('is_active', 1)->first();
+                $fyStart = Carbon::parse($fy->start_date ?? Utility::AnnualLeaveCycle()['start_date'])->startOfMonth();
+                $fyEnd   = Carbon::parse($fy->end_date   ?? Utility::AnnualLeaveCycle()['end_date'])->endOfMonth();
+
+                // --- Employee DOJ (from auth user) ---
+                $employee = auth()->user()->employee ?? null;
+
+                $monthsWorked = 0;
+                if ($employee && $employee->company_doj) {
+                    $join = Carbon::parse($employee->company_doj)->startOfMonth();
+
+                    if ($join->lt($fyStart)) {
+                        // Joined before FY start → full FY
+                        $monthsWorked = 12; // usually 12
+                    } elseif ($join->gt($fyEnd)) {
+                        // Joined after FY end → 0
+                        $monthsWorked = 0;
+                    } else {
+                        // Joined within FY → prorated
+                        $monthsWorked = round($join->diffInMonths($fyEnd)); // inclusive
+                    }
+                } else {
+                    // No DOJ → full FY
+                    $monthsWorked = 12;
+                }
+
+
+                // --- Fetch leave types and compute prorated allowed leave ---
+                $leaveTypesAll = LeaveType::whereIn('id', $typeIds)
+                    ->get()
+                    ->map(function ($type) use ($monthsWorked) {
+                        $days = (float) ($type->days ?? 0);
+
+                        $perMonth = $days / 12; // entitlement per month
+                        $type->allowed_leave = roundToHalf($perMonth * $monthsWorked);
+                        $type->monthsWorked  = $monthsWorked; // debug
+                        $type->perMonth      = $perMonth;     // debug
+
+                        return $type;
+                    })
+                    ->keyBy('id');
 
                 
                 /* ******************* Leave calculation end ******************* */
@@ -392,6 +546,8 @@ class HomeController extends Controller
                 // Get only today's attendance
                 $today = Carbon::today()->toDateString();
 
+                $previousDate = date('Y-m-d', strtotime($date . ' -1 day'));
+
                 $FindOnBreakEmployee = AttendanceEmployee::whereIn('employee_id', $employeeCheck)
                     ->whereDate('date', $today)
                     ->orderByRaw('work_from_home DESC')
@@ -405,12 +561,14 @@ class HomeController extends Controller
                         foreach ($breakLogs as $break) {
                             if (!empty($break->break_start)) {
                                 try {
-                                    $start = Carbon::parse($break->break_start);
+                                    $startTime = $break->break_start_date.' '.$break->break_start;
+                                    $endTime = $break->break_end_date.' '.$break->break_end;
+                                    $start = Carbon::parse($startTime);
 
-                                    if (empty($break->break_end)) {
+                                    if (empty($endTime)) {
                                         $isInBreak = true; // currently on break
                                     } else {
-                                        $end = Carbon::parse($break->break_end);
+                                        $end = Carbon::parse($endTime);
                                         if ($end->greaterThan($start)) {
                                             $duration = $start->diffInSeconds($end);
                                             $totalSeconds += (int) round($duration);
@@ -433,11 +591,11 @@ class HomeController extends Controller
                     ->values();
 
 
-                // attendanceEmployee
+                // attendanceEmployee  employeeAttendance
                 /* *************** New Add End ****************************/
-
+                $employeesinfo = Employee::where('user_id', '=', $user->id)->first();
                 
-                return view('dashboard.dashboard', compact('arrEvents', 'announcements', 'employees', 'meetings', 'employeeAttendance', 'officeTime','disableCheckbox','isWorkFromHome','leaves','Todayleaves','attendanceEmployee','ThisMonthattendanceCount', 'LastMonthattendanceCount','breakLogs', 'totalBreakDuration','totalSeconds','hasOngoingBreak','leaveCounts','leaveTypes','leaveTypesAll','leaves_cc','FindOnBreakEmployee'));
+                return view('dashboard.dashboard', compact('arrEvents', 'announcements', 'employees', 'meetings', 'employeeAttendance','relievedCount', 'officeTime','disableCheckbox','isWorkFromHome','leaves','Todayleaves','attendanceEmployee','ThisMonthattendanceCount', 'LastMonthattendanceCount','breakLogs', 'totalBreakDuration','totalSeconds','nextWorkingDay','NextDayLeaves','hasOngoingBreak','leaveCounts','leaveTypes','leaveTypesAll','leaves_cc','FindOnBreakEmployee','employeesinfo','todaysClockOutCount','monthlyHolidayCount','thisMonthNetHourse','lastMonthNetHourse'));
             }
             else
             {
@@ -476,7 +634,12 @@ class HomeController extends Controller
                 $countEmployee = count($emp);
                 $notClockIn    = AttendanceEmployee::where('date', '=', $currentDate)->get()->pluck('employee_id');
 
-                $notClockIns    = Employee::where('created_by', '=', \Auth::user()->creatorId())->whereNotIn('id', $notClockIn)->get();
+                $relievedCount = Employee::where('created_by', \Auth::user()->creatorId())
+                                    ->whereNotNull('relieving_date')
+                                    ->where('relieving_date', '<=', now())
+                                    ->count();
+
+                $notClockIns    = Employee::where('created_by', '=', \Auth::user()->creatorId())->whereNull('relieving_date')->orderBy('name', 'asc')->whereNotIn('id', $notClockIn)->get();
 
 
                 /* ****************************************************************** */
@@ -492,18 +655,37 @@ class HomeController extends Controller
                 foreach ($notClockIns as $employee) {
                     // Check if employee is on leave today
                     $leave = LocalLeave::where('employee_id', $employee->id)
-                        ->where('status', 'Approved')
                         ->whereDate('start_date', '<=', $today)
                         ->whereDate('end_date', '>=', $today)
-                        ->whereIn('leave_type_id', [1, 2])
+                        ->whereIn('leave_type_id', [1,2,4,6])
                         ->with('leaveType') // assumes relation is defined
                         ->first();
+
+                    // Get availability status (safe check)
+                    $availabilityStatus = optional($employee->availabilityStatus)->name;
+
+                    // Determine leave type
+                    $leaveType = 'Absent'; // default
+                    $leaveStatus = '-';
+                    $leaveId=0;
+
+                    if ($leave) {
+                        $leaveType = $leave->leaveType->title ?? 'N/A';
+                        $leaveStatus = $leave->status ?? 'N/A';
+                        $leaveId = $leave->id;
+                    } elseif ($availabilityStatus !== 'Available') {
+                        // If not on leave and not Available, don't show Absent
+                        $leaveType = $availabilityStatus ?? 'N/A';
+                    }
 
                     $notClockInDetails[] = [
                         'employee_id' => $employee->id,
                         'employee_name' => $employee->name,
                         'is_on_leave' => $leave ? true : false,
-                        'leave_type' => $leave ? ($leave->leaveType->title ?? 'N/A') : 'Absent',
+                        'leave_type' => $leaveType,
+                        'leave_status' => $leaveStatus,
+                        'leave_id' => $leaveId,
+                        'employee' => $employee, // pass full employee model if needed in view
                     ];
                 }
 
@@ -549,13 +731,16 @@ class HomeController extends Controller
                     foreach ($breakLogs as $break) {
                         if (!empty($break->break_start)) {
                             try {
-                                $start = Carbon::parse($break->break_start);
 
-                                if (empty($break->break_end)) {
+                                $startTime = $break->break_start_date.' '.$break->break_start; 
+                                $endTime = $break->break_end_date.' '.$break->break_end;
+                                $start = Carbon::parse($startTime);
+
+                                if (empty($endTime)) {
                                     // If break_end is NULL, employee is currently on break
                                     $isInBreak = true;
                                 } else {
-                                    $end = Carbon::parse($break->break_end);
+                                    $end = Carbon::parse($endTime);
                                     if ($end->greaterThan($start)) {
                                         $duration = $start->diffInSeconds($end);
                                         $totalSeconds += (int) round($duration);
@@ -574,10 +759,10 @@ class HomeController extends Controller
                     return $attendance;
                 });
 
-                // attendanceEmployee
+                // attendanceEmployee Todayleaves
                 /* *************** New Add End ****************************/
 
-                return view('dashboard.dashboard', compact('arrEvents', 'announcements', 'activeJob','inActiveJOb','meetings', 'countEmployee', 'countUser', 'countTicket', 'countOpenTicket', 'countCloseTicket', 'notClockIns', 'countEmployee', 'accountBalance', 'totalPayee', 'totalPayer','attendanceEmployee','leaves','Todayleaves','breakLogs', 'totalBreakDuration', 'totalSeconds','hasOngoingBreak','notClockInDetails'));
+                return view('dashboard.dashboard', compact('arrEvents', 'announcements', 'activeJob','inActiveJOb','meetings', 'countEmployee','relievedCount', 'countUser', 'countTicket', 'countOpenTicket', 'countCloseTicket', 'notClockIns', 'countEmployee', 'accountBalance', 'totalPayee', 'totalPayer','attendanceEmployee','leaves','Todayleaves','nextWorkingDay','NextDayLeaves','breakLogs', 'totalBreakDuration', 'totalSeconds','hasOngoingBreak','notClockInDetails','todaysClockOutCount','monthlyHolidayCount','thisMonthNetHourse','lastMonthNetHourse'));
             }
         }
         else
@@ -604,40 +789,251 @@ class HomeController extends Controller
         }
     }
 
-
-    // Private function to calculate leave days excluding weekends
-    private function getTotalLeaveDays($startDate, $endDate,$leave_type_id,$half_day_type)
+    public function dashboard_hr()
     {
-        $startDate = \Carbon\Carbon::parse($startDate);
-        $endDate = \Carbon\Carbon::parse($endDate);
+        
+        $user = \Auth::user();
 
-        $totalLeaveDays = 0;
+        // Check if user has 'Complaint-Reviewer' role
+        $isReviewer = $user->secondaryRoleAssignments()
+            ->whereHas('role', fn($q) => $q->where('name', 'Dashboard-Reviewer'))
+            ->exists();
 
-        if($leave_type_id != 5){
-            // Fetch all holidays in the date range
-            $holidays = \App\Models\Holiday::where('is_optional', 0)
-                        ->pluck('start_date')
-                        ->map(fn($date) => \Carbon\Carbon::parse($date)->format('Y-m-d'))
-                        ->toArray();
+        $user = Auth::user();
+        $leaves = [];
+        $Todayleaves = [];
+        $attendanceEmployee = [];
+        $ThisMonthattendanceCount = 0;
+        $LastMonthattendanceCount = 0;
+        $totalSeconds = 0;
+        $hasOngoingBreak = false;
+        $relievedCount = 0;
 
-            // echo "<pre>";print_r($holidays);exit;
+        $breakLogs = collect(); // Initialize empty collection for break logs
+        $totalBreakDuration = '00:00:00'; // Default to zero time
 
-            for ($date = $startDate->copy(); $date <= $endDate; $date->addDay()) {
-                $formattedDate = $date->format('Y-m-d');
+        // Today's Clock Out records
+        $todaysClockOut = AttendanceEmployee::whereDate('date', Carbon::today())
+                            ->where('clock_out', '!=', "00:00:00")
+                            ->with('employee') // assumes relation AttendanceEmployee -> employee
+                            ->orderBy('clock_out', 'desc')
+                            ->get();
 
-                // Skip weekends and holidays
-                if (!$date->isWeekend() && !in_array($formattedDate, $holidays)) {
-                    if(($leave_type_id == 1 || $leave_type_id == 2) && $half_day_type != 'full_day'){
-                       $totalLeaveDays = $totalLeaveDays + 0.5; 
-                    }else{
-                       $totalLeaveDays++; 
+        // Count (if needed separately)
+        $todaysClockOutCount = $todaysClockOut->count();
+
+        if (\Auth::user()->can('Manage Leave')) {
+            // Get current date and current month
+            // Get the current date notClockInDetails
+            $currentDate = Carbon::today();
+
+            // Get the start and end of the current month
+            $startOfMonth = $currentDate->copy()->startOfMonth()->format('Y-m-d 00:00:00');
+            $endOfMonth = $currentDate->copy()->endOfMonth()->format('Y-m-d 23:59:59');
+
+            // For non-employees (e.g., admin)
+            $leaves = LocalLeave::where('created_by', '=', \Auth::user()->creatorId())
+                // ->where('status', '=', 'Pending')  
+                ->whereIn('status', ['Partially_Approved', 'Manager_Approved'])
+                ->with(['employees', 'leaveType']) 
+                ->orderBy('start_date', 'desc')
+                ->get();
+
+            $today = Carbon::today(); // Get today's date
+
+            // Check if today is a weekend (Saturday or Sunday)
+            if (!$today->isWeekend()) {
+                // Fetch leave records where the status is 'Approved' and today is between start_date and end_date
+                $Todayleaves = LocalLeave::where('created_by', '=', \Auth::user()->creatorId())
+                                ->where('status', '!=', 'Draft') // Exclude Draft status
+                                ->whereDate('start_date', '<=', $today)
+                                ->whereDate('end_date', '>=', $today)
+                                ->with(['employees', 'leaveType'])
+                                ->orderBy('start_date', 'desc')
+                                ->get();
+
+                // Calculate total leave days for each leave if not already calculated
+                foreach ($Todayleaves as $Todayleave) {
+                    if ($Todayleave->total_leave_days == 0) {
+                        $Todayleave->total_leave_days = getTotalLeaveDays($Todayleave->start_date, $Todayleave->end_date,$Todayleave->leave_type_id,$Todayleave->half_day_type);
                     }
-                    
+                }
+            }
+
+            // Calculate total leave days for each leave if not already calculated
+            foreach ($leaves as $leave) {
+                if ($leave->total_leave_days == 0) {
+                    $leave->total_leave_days = getTotalLeaveDays($leave->start_date, $leave->end_date,$leave->leave_type_id,$leave->half_day_type);
                 }
             }
         }
 
-        return $totalLeaveDays;
+
+        
+        
+        $events    = Event::where('created_by', '=', \Auth::user()->creatorId())->get();
+        $arrEvents = [];
+
+        foreach($events as $event)
+        {
+            $arr['id']    = $event['id'];
+            $arr['title'] = $event['title'];
+            $arr['start'] = $event['start_date'];
+            $arr['end']   = $event['end_date'];
+
+            $arr['className'] = $event['color'];
+            // $arr['borderColor']     = "#fff";
+            // $arr['textColor']       = "white";
+            $arr['url']             = route('event.edit', $event['id']);
+
+            $arrEvents[] = $arr;
+        }
+
+        $announcements = Announcement::orderBy('announcements.id', 'desc')->take(5)->where('created_by', '=', \Auth::user()->creatorId())->get();
+
+        $emp = User::where('type', '=', 'employee')->where('created_by', '=', \Auth::user()->creatorId())->get();
+        $countEmployee = count($emp);
+
+        $user      = User::where('type', '!=', 'employee')->where('created_by', '=', \Auth::user()->creatorId())->get();
+        $countUser = count($user);
+
+        $countTicket      = Ticket::where('created_by', '=', \Auth::user()->creatorId())->count();
+        $countOpenTicket  = Ticket::where('status', '=', 'open')->where('created_by', '=', \Auth::user()->creatorId())->count();
+        $countCloseTicket = Ticket::where('status', '=', 'close')->where('created_by', '=', \Auth::user()->creatorId())->count();
+
+        $currentDate = date('Y-m-d');
+
+        $countEmployee = count($emp);
+        $notClockIn    = AttendanceEmployee::where('date', '=', $currentDate)->get()->pluck('employee_id');
+
+        $relievedCount = Employee::where('created_by', \Auth::user()->creatorId())->whereNotNull('relieving_date')->where('relieving_date', '<=', now())->count();
+
+        $notClockIns    = Employee::where('created_by', '=', \Auth::user()->creatorId())->whereNotIn('id', $notClockIn)->whereNull('relieving_date')->orderBy('name', 'asc')->get();
+
+
+        /* ****************************************************************** */
+
+
+        // notClockIns
+
+
+
+        $today = Carbon::today()->toDateString();
+        $notClockInDetails = [];
+
+        foreach ($notClockIns as $employee) {
+            // Check if employee is on leave today
+            $leave = LocalLeave::where('employee_id', $employee->id)
+                ->whereDate('start_date', '<=', $today)
+                ->whereDate('end_date', '>=', $today)
+                ->whereIn('leave_type_id', [1,2,4,6])
+                ->with('leaveType') // assumes relation is defined
+                ->first();
+
+            // Get availability status (safe check)
+            $availabilityStatus = optional($employee->availabilityStatus)->name;
+
+            // Determine leave type
+            $leaveType = 'Absent'; // default
+            $leaveStatus = '-';
+            $leaveId=0;
+
+            if ($leave) {
+                $leaveType = $leave->leaveType->title ?? 'N/A';
+                $leaveStatus = $leave->status ?? 'N/A';
+                $leaveId=$leave->id;
+            } elseif ($availabilityStatus !== 'Available') {
+                // If not on leave and not Available, don't show Absent
+                $leaveType = $availabilityStatus ?? 'N/A';
+            }
+
+            $notClockInDetails[] = [
+                'employee_id' => $employee->id,
+                'employee_name' => $employee->name,
+                'is_on_leave' => $leave ? true : false,
+                'leave_type' => $leaveType,
+                'leave_status' => $leaveStatus,
+                'leave_id' => $leaveId,
+                'employee' => $employee, // pass full employee model if needed in view
+            ];
+        }
+
+
+        /* ****************************************************************** */
+        $accountBalance = AccountList::where('created_by', '=', \Auth::user()->creatorId())->sum('initial_balance');
+        
+        $activeJob   = Job::where('status', 'active')->where('created_by', '=', \Auth::user()->creatorId())->count();
+        $inActiveJOb = Job::where('status', 'in_active')->where('created_by', '=', \Auth::user()->creatorId())->count();
+
+        $totalPayee = Payees::where('created_by', '=', \Auth::user()->creatorId())->count();
+        $totalPayer = Payer::where('created_by', '=', \Auth::user()->creatorId())->count();
+
+        $meetings = Meeting::where('created_by', '=', \Auth::user()->creatorId())->limit(5)->get();
+
+        /* *************** New Add Start ****************************/
+        $employee = Employee::select('id')->where('created_by', \Auth::user()->creatorId());
+
+        if (!empty($request->branch)) {
+            $employee->where('branch_id', $request->branch);
+        }
+
+        if (!empty($request->department)) {
+            $employee->where('department_id', $request->department);
+        }
+
+        $employee = $employee->get()->pluck('id');
+
+        // Get only today's attendance
+        $today = Carbon::today()->toDateString();
+
+        $attendanceEmployee = AttendanceEmployee::whereIn('employee_id', $employee)
+        ->whereDate('date', $today)
+        ->orderByRaw('work_from_home DESC')
+        ->orderBy('updated_at', 'desc')
+        ->get()
+        ->map(function ($attendance) {
+            // Fetch all breaks for this attendance record
+            $breakLogs = $attendance->breaks()->get();
+            $totalSeconds = 0;
+            $isInBreak = false; // Flag to track if the employee is currently in a break
+
+            foreach ($breakLogs as $break) {
+                if (!empty($break->break_start)) {
+                    try {
+                        $startTime = $break->break_start_date.' '.$break->break_start; 
+                        $endTime = $break->break_end_date.' '.$break->break_end;
+
+                        $start = Carbon::parse($startTime);
+
+                        if (empty($endTime)) {
+                            // If break_end is NULL, employee is currently on break
+                            $isInBreak = true;
+                        } else {
+                            $end = Carbon::parse($endTime);
+                            if ($end->greaterThan($start)) {
+                                $duration = $start->diffInSeconds($end);
+                                $totalSeconds += (int) round($duration);
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        \Log::error("Error calculating break duration for attendance ID: " . $attendance->id . " - " . $e->getMessage());
+                    }
+                }
+            }
+
+            // Convert total break duration into HH:MM:SS format
+            $attendance->totalBreakDuration = sprintf('%02d:%02d:%02d', intdiv($totalSeconds, 3600), intdiv($totalSeconds % 3600, 60), $totalSeconds % 60);
+            $attendance->isInBreak = $isInBreak; // Assign break status
+
+            return $attendance;
+        });
+
+        // attendanceEmployee  leaves
+        /* *************** New Add End ****************************/
+
+        return view('dashboard.dashboard-hr', compact('arrEvents', 'announcements', 'activeJob','inActiveJOb','meetings', 'countEmployee','relievedCount', 'countUser', 'countTicket', 'countOpenTicket', 'countCloseTicket', 'notClockIns', 'countEmployee', 'accountBalance', 'totalPayee', 'totalPayer','attendanceEmployee','leaves','Todayleaves','breakLogs', 'totalBreakDuration', 'totalSeconds','hasOngoingBreak','notClockInDetails','isReviewer','todaysClockOutCount'));
+        
+        
     }
 
     public function getOrderChart($arrParam)

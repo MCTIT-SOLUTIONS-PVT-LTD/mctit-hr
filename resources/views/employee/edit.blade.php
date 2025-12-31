@@ -44,6 +44,15 @@
                                         {!! Form::date('dob', null, ['class' => 'form-control ', 'id' => 'data_picker1']) !!}
                                     </div>
                                 </div>
+
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        {!! Form::label('relieving_date', __('Relieving Date'), ['class' => 'form-label']) !!}
+                                        {!! Form::date('relieving_date', $employee->relieving_date ?? null, ['class' => 'form-control']) !!}
+                                        <small class="text-muted">{{ __('Leave empty if the employee is still active') }}</small>
+                                    </div>
+                                </div>
+                                
                                 <div class="col-md-6 ">
                                     <div class="form-group ">
                                         {!! Form::label('gender', __('Gender'), ['class' => 'form-label']) !!}<x-required></x-required>
@@ -63,7 +72,60 @@
                                         </div>
                                     </div>
                                 </div>
+
+                                <div class="col-md-6 ">
+                                    <div class="form-group">
+                                        <label for="availability_status">Availability Status</label>
+                                        <select name="availability_status" id="availability_status" class="form-control">
+                                            <option value="">-- Select Status --</option>
+                                            @foreach($statuses as $status)
+                                                <option value="{{ $status->id }}" {{ $employee->availability_status == $status->id ? 'selected' : '' }}>
+                                                    {{ $status->name }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="form-group col-md-6">
+                                    {!! Form::label('employee_type', __('Employee Type'), ['class' => 'form-label']) !!}<x-required></x-required>
+                                    {!! Form::select('employee_type', [
+                                        'Payroll Employee' => __('Payroll Employee'),
+                                        'Trainee' => __('Trainee'),
+                                        'College Trainee' => __('College Trainee'),
+                                    ], old('employee_type', $employee->employee_type ?? 'Payroll Employee'), [
+                                        'class' => 'form-control',
+                                        'placeholder' => __('Select Employee Type'),
+                                        'required' => 'required',
+                                    ]) !!}
+                                </div>
+
+                                <div class="col-md-12">
+                                    <div class="form-group">
+                                        {{ Form::label('managers[]', __('Managers'), ['class' => 'col-form-label']) }}<x-required></x-required>
+                                        {{ Form::select('managers[]', 
+                                            $managerList, 
+                                            old('managers', $selectedManagers), 
+                                            ['class' => 'form-control select2', 'multiple' => 'multiple', 'id' => 'managers']
+                                        ) }}
+                                        <small class="text-muted">{{ __('You can select multiple reporting managers.') }}</small>
+                                    </div>
+                                </div>
                             </div>
+
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-check-label d-block mb-1" for="work_from_home">{{ __('Work From Home') }}</label>
+                                    <div class="form-check form-switch">
+                                        <input type="checkbox" class="form-check-input" id="work_from_home"
+                                               name="work_from_home"
+                                               value="1"
+                                               {{ old('work_from_home', $employee->work_from_home) ? 'checked' : '' }}>
+                                        <label class="form-check-label" for="work_from_home">{{ __('Enable') }}</label>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="form-group">
                                 {!! Form::label('address', __('Address'), ['class' => 'form-label']) !!}<x-required></x-required>
                                 {!! Form::textarea('address', null, ['class' => 'form-control', 'rows' => 3]) !!}

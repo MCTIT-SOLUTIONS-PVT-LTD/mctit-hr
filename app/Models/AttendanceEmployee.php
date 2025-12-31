@@ -20,6 +20,9 @@ class AttendanceEmployee extends Model
         'created_by',
         'checkout_time_diff',
         'work_from_home',
+        'is_leave',
+        'device_type_clockin',  
+        'device_type_clockout',
     ];
 
     public function employees()

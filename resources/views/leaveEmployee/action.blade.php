@@ -23,19 +23,7 @@
                 <tr>
                     <th>{{ __('Leave(Full/Half Day) ') }}</th>
                     <td>
-                        @switch($leave->half_day_type)
-                            @case('full_day')
-                                <div class="badge bg-success p-2 px-3">{{ __('Full Day') }}</div>
-                                @break
-                            @case('morning')
-                                <div class="badge bg-dark p-2 px-3">{{ __('First Half (Morning)') }}</div>
-                                @break
-                            @case('afternoon')
-                                <div class="badge bg-danger p-2 px-3">{{ __('Second Half (Afternoon)') }}</div>
-                                @break
-                            @default
-                                <div class="badge bg-secondary p-2 px-3">{{ __('Not Specified') }}</div>
-                        @endswitch
+                        {{ indexHalfLabel($leave->half_day_type) }}
                     </td>
                 </tr>
                 @endif
@@ -64,27 +52,7 @@
                 <tr>
                     <th>{{ __('Status') }}</th>
                     <td>
-                        @if ($leave->status == 'Pending')
-                            <div class="badge bg-warning p-2 px-3 ">{{ $leave->status }}</div>
-                        @elseif ($leave->status == 'In_Process')
-                            <div class="badge p-2 px-3" style="background:#9D00FF;">In-Process</div>
-                        @elseif ($leave->status == 'Manager_Approved')
-                            <div class="badge p-2 px-3" style="background:#004000;">Manager-Approved</div>
-                        @elseif ($leave->status == 'Manager_Rejected')
-                            <div class="badge p-2 px-3" style="background:#800040;">Manager-Rejected</div>
-                        @elseif ($leave->status == 'Partially_Approved')
-                            <div class="badge p-2 px-3" style="background:#9ACD32;">Partially-Approved</div>
-                        @elseif($leave->status == 'Approved')
-                            <div class="badge bg-success p-2 px-3 ">{{ $leave->status }}</div>
-                        @elseif($leave->status == "Reject")
-                            <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
-                        @elseif($leave->status == "Draft")
-                            <div class="badge bg-info p-2 px-3 ">{{ $leave->status }}</div>
-                        @elseif($leave->status == "Cancelled")
-                            <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
-                        @elseif($leave->status == 'Pre-Approved')
-                            <div class="text-success"><b>{{ $leave->status }}</b></div>
-                        @endif
+                        {!! leaveStatusBadge($leave) !!}
                     </td>
                 </tr>
 

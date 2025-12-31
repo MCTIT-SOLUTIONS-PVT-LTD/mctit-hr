@@ -55,6 +55,15 @@
                     <option value="afternoon" {{ old('half_day_type', $leave->half_day_type) == 'afternoon' ? 'selected' : '' }}>
                         {{ __('Second Half (Afternoon)') }}
                     </option>
+
+                    <option value="leave_am_wfh_pm" {{ old('half_day_type', $leave->half_day_type) == 'leave_am_wfh_pm' ? 'selected' : '' }}>
+                        {{ __('Morning Leave / Afternoon WFH') }}
+                    </option>
+
+                    <option value="wfh_am_leave_pm" {{ old('half_day_type', $leave->half_day_type) == 'wfh_am_leave_pm' ? 'selected' : '' }}>
+                        {{ __('Morning WFH / Afternoon Leave') }}
+                    </option>
+
                 </select>
             </div>
         </div>
@@ -237,9 +246,9 @@
 
         var leave_type_id = $('#leave_type_id').val();
 
-        if (leave_type_id == "3" || leave_type_id == "4") {
+        if (leave_type_id == "3" || leave_type_id == "4" || leave_type_id == "7") {
             $('#half_day_type').val('full_day').prop('disabled', true);
-            if(leave_type_id == "4"){
+            if(leave_type_id == "4" || leave_type_id == "7"){
                 $('#end_date').prop('disabled', true);
             }
         }
@@ -249,13 +258,13 @@
         $('#leave_type_id').on('change', function () {
             var selectedValue = $(this).val();
             
-            if (selectedValue == "3" || selectedValue == "4") {
+            if (selectedValue == "3" || selectedValue == "4" || selectedValue == "7") {
                 $('#half_day_type').val('full_day').prop('disabled', true);
             } else {
                 $('#half_day_type').prop('disabled', false);
             }
 
-            if(selectedValue == "4" || selectedValue == "5"){
+            if(selectedValue == "4" || selectedValue == "5" || selectedValue == "7"){
                 $('#start_date').val('');
                 $('#end_date').val('');
                 $('#end_date').prop('disabled', true);
@@ -267,7 +276,7 @@
         $('#start_date').on('blur', function () {
             var selectedValue = $('#leave_type_id').val();
             
-            if (selectedValue == "4" || selectedValue == "5") {
+            if (selectedValue == "4" || selectedValue == "5" || selectedValue == "7") {
                 var startDate = $(this).val();
                 $('#end_date').val(startDate);
             }

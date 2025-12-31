@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Employee;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\AwardController;
@@ -90,6 +91,7 @@ use App\Http\Controllers\ReimbursementController;
 use App\Http\Controllers\ITTicketController;
 use App\Http\Controllers\ComplaintsController;
 use App\Http\Controllers\LeaveEmployeeController;
+use App\Http\Controllers\CustomSaml2Controller;
 
 /*
 |--------------------------------------------------------------------------
@@ -101,6 +103,32 @@ use App\Http\Controllers\LeaveEmployeeController;
 | contains the "web" middleware group. Now create something great!
 |
 */
+
+Route::post('/set-device', function (Request $request) {
+    $device = $request->input('device_type');
+    if (in_array($device, ['mobile', 'desktop'])) {
+        session(['device_type' => $device]);
+    }
+    return response()->json(['ok' => true]);
+});
+
+
+// Route::post('/saml2/test/acs', [CustomSaml2Controller::class, 'acs']);
+// Route::post('/saml2/test/acs', [CustomSaml2Controller::class, 'acs'])->name('saml2-acs');
+Route::post('/saml2/test/acs', function () {
+     echo "hello";exit;
+});
+
+
+Route::get('/sso/after-login', function () {
+    // echo "<pre>";print_r(auth()->id);
+    // echo "hello";exit;
+    if (auth()->check()) {
+        return redirect('/dashboard'); 
+    }
+
+    return redirect('/login')->with('error', 'Login failed.');
+});
 
 
 Route::get('/', function () {
@@ -136,6 +164,7 @@ Route::any('/cookie-consent', [SettingsController::class, 'CookieConsent'])->nam
 Route::group(['middleware' => ['verified']], function () {
 
     Route::get('/dashboard', [HomeController::class, 'index'])->middleware(['auth', 'XSS'])->name('dashboard');
+    Route::get('/dashboard-hr', [HomeController::class, 'dashboard_hr'])->middleware(['auth', 'XSS'])->name('dashboard-hr');
     // Route::get('/home', [HomeController::class, 'index'])->name('home')->middleware(
     //     [
     //         'auth',
@@ -808,6 +837,9 @@ Route::group(['middleware' => ['verified']], function () {
         ]
     );
 
+    Route::post('ticket/{id}/change-status', [TicketController::class, 'changeStatus'])->name('ticket.changeStatus')
+    ->middleware(['auth', 'XSS']);
+
     // Attendance Routes Group
     Route::prefix('attendanceemployee')->middleware(['auth', 'XSS'])->group(function () {
         // Break Management Routes
@@ -818,9 +850,16 @@ Route::group(['middleware' => ['verified']], function () {
 
         // Attendance Logs
         Route::get('/logs', [AttendanceEmployeeController::class, 'getAttendance'])->name('attendance.logs');
+        Route::post('/employee_clockout/{id}', [AttendanceEmployeeController::class, 'employee_clockout'])->name('attendance.employee_clockout');
     });
 
+    
+
     Route::post('/attendanceemployee/update-work-from-home', [AttendanceEmployeeController::class, 'updateWorkFromHome']);
+
+    Route::post('/attendanceemployee/update-time', [AttendanceEmployeeController::class, 'updateTime'])
+    ->name('attendanceemployee.updateTime')
+    ->middleware('auth');
 
     Route::get('attendanceemployee/bulkattendance', [AttendanceEmployeeController::class, 'bulkAttendance'])->name('attendanceemployee.bulkattendance')->middleware(
         [
@@ -1551,6 +1590,8 @@ Route::group(['middleware' => ['verified']], function () {
             'XSS',
         ]
     );
+
+    Route::get('/qr/employee/{id}', [ReimbursementController::class, 'generateQr'])->name('employee.qr');
 
     Route::get('/reimbursements/{id}/action', [ReimbursementController::class, 'action'])
     ->name('reimbursements.action');

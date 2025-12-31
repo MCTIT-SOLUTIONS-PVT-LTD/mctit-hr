@@ -40,10 +40,11 @@
                                 <th>{{ __('Employee ID') }}</th>
                                 <th>{{ __('Name') }}</th>
                                 <th>{{ __('Email') }}</th>
-                                <th>{{ __('Branch') }}</th>
-                                <th>{{ __('Department') }}</th>
+                                <!-- <th>{{ __('Branch') }}</th> -->
+                                <!-- <th>{{ __('Department') }}</th> -->
                                 <th>{{ __('Designation') }}</th>
                                 <th>{{ __('Date Of Joining') }}</th>
+                                <th>{{ __('Manager') }}</th>
                                 @if (Gate::check('Edit Employee') || Gate::check('Delete Employee'))
                                     <th width="200px">{{ __('Action') }}</th>
                                 @endif
@@ -51,29 +52,54 @@
                         </thead>
                         <tbody>
                             @foreach ($employees as $employee)
-                                <tr>
+                                <tr @if($employee->relieving_date) style="color: red;" @endif>
                                     <td>
+                                        @if($employee->work_from_home)
+                                            <i class="fa fa-desktop" aria-hidden="true" title="Work from home"></i> 
+                                        @endif
+
                                         @can('Show Employee')
                                             <a class="btn btn-outline-primary"
-                                                href="{{ route('employee.show', \Illuminate\Support\Facades\Crypt::encrypt($employee->id)) }}">{{ \Auth::user()->employeeIdFormat($employee->employee_id) }}</a>
+                                                href="{{ route('employee.show', \Illuminate\Support\Facades\Crypt::encrypt($employee->id)) }}">
+                                                {{ \Auth::user()->employeeIdFormat($employee->employee_id) }}
+                                            </a>
                                         @else
                                             <a href="#"
                                                 class="btn btn-outline-primary">{{ \Auth::user()->employeeIdFormat($employee->employee_id) }}</a>
                                         @endcan
+                                        
+                                        
                                     </td>
-                                    <td>{{ $employee->name }}</td>
+                                    <td>{{ $employee->name }}
+                                        @if($employee->employee_type != 'Payroll Employee')
+                                            ({{$employee->employee_type}})
+                                        @endif
+                                    </td>
                                     <td>{{ !empty($employee->email) ? $employee->email : '-' }}</td>
-                                    <td>
+                                    <!-- <td>
                                         {{ !empty($employee->branch_id) ? $employee->branch->name : '-' }}
-                                    </td>
-                                    <td>
+                                    </td> -->
+                                    <!-- <td>
                                         {{ !empty($employee->department_id) ? $employee->department->name : '-' }}
-                                    </td>
+                                    </td> -->
                                     <td>
                                         {{ !empty($employee->designation_id) ? $employee->designation->name : '-' }}
                                     </td>
                                     <td>
                                         {{ \Auth::user()->dateFormat($employee->company_doj) }}
+                                    </td>
+                                    <td>
+                                        @if(!empty($employee->manages_id))
+                                            @php
+                                                $managedEmployees = \App\Models\Employee::whereIn('id', json_decode($employee->manages_id))->pluck('name')->toArray();
+                                            @endphp
+
+                                            @foreach($managedEmployees as $name)
+                                                {{ $name }}<br>
+                                            @endforeach
+                                        @else
+                                            -
+                                        @endif
                                     </td>
                                     @if (Gate::check('Edit Employee') || Gate::check('Delete Employee'))
                                         <td class="Action">

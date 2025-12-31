@@ -17,7 +17,7 @@ use Carbon\Carbon;
 
 class AttendanceEmployeeController extends Controller
 {
-    public function index(Request $request)
+    public function indexOld(Request $request)
     {
         if (\Auth::user()->can('Manage Attendance')) {
             $branch = Branch::where('created_by', \Auth::user()->creatorId())->get()->pluck('name', 'id');
@@ -133,8 +133,11 @@ class AttendanceEmployeeController extends Controller
                 foreach ($breakLogs as $break) {
                     if (!empty($break->break_start) && !empty($break->break_end)) {
                         try {
-                            $start = Carbon::parse($break->break_start);
-                            $end = Carbon::parse($break->break_end);
+
+                            $startTime = $break->break_start_date.' '.$break->break_start; 
+                            $endTime = $break->break_end_date.' '.$break->break_end;
+                            $start = Carbon::parse($startTime);
+                            $end = Carbon::parse($endTime);
 
                             // Ensure valid duration
                             if ($end->greaterThan($start)) {
@@ -155,6 +158,84 @@ class AttendanceEmployeeController extends Controller
             // echo "<pre>";print_r($attendanceEmployee);exit;
 
             return view('attendance.index', compact('attendanceEmployee', 'branch', 'department'));
+        } else {
+            return redirect()->back()->with('error', __('Permission denied.'));
+        }
+    }
+
+
+    public function index(Request $request)
+    {
+        if (\Auth::user()->can('Manage Attendance')) {
+
+            // Employee dropdown data
+            $employeeList = Employee::where('created_by', \Auth::user()->creatorId())
+                ->orderBy('name', 'asc')
+                ->pluck('name', 'id');
+
+            if (\Auth::user()->type == 'employee') {
+                $emp = !empty(\Auth::user()->employee) ? \Auth::user()->employee->id : 0;
+                $attendanceEmployee = AttendanceEmployee::where('employee_id', $emp);
+            } else {
+                $employee = Employee::select('id')->where('created_by', \Auth::user()->creatorId());
+
+                // ✅ Replace branch/department filter with employee filter
+                if (!empty($request->employee_id)) {
+                    $employee->where('id', $request->employee_id);
+                }
+
+                $employee = $employee->get()->pluck('id');
+                $attendanceEmployee = AttendanceEmployee::whereIn('employee_id', $employee);
+            }
+
+            // ✅ Apply date filters
+            if ($request->type == 'monthly' && !empty($request->month)) {
+                $month = date('m', strtotime($request->month));
+                $year  = date('Y', strtotime($request->month));
+                $start_date = date($year . '-' . $month . '-01');
+                $end_date   = date('Y-m-t', strtotime('01-' . $month . '-' . $year));
+                $attendanceEmployee->whereBetween('date', [$start_date, $end_date]);
+            } elseif ($request->type == 'daily' && !empty($request->date)) {
+                $attendanceEmployee->where('date', $request->date);
+            } else {
+                $month = date('m');
+                $year  = date('Y');
+                $start_date = date($year . '-' . $month . '-01');
+                $end_date   = date('Y-m-t', strtotime('01-' . $month . '-' . $year));
+                $attendanceEmployee->whereBetween('date', [$start_date, $end_date]);
+            }
+
+            $attendanceEmployee = $attendanceEmployee->orderBy('created_at', 'desc')->get();
+
+            // ✅ Add break calculation (unchanged)
+            $attendanceEmployee = $attendanceEmployee->map(function ($attendance) {
+                $breakLogs = $attendance->breaks()->whereNotNull('break_end')->get();
+                $totalSeconds = 0;
+                foreach ($breakLogs as $break) {
+                    if (!empty($break->break_start) && !empty($break->break_end)) {
+                        try {
+                            $startTime = $break->break_start_date.' '.$break->break_start; 
+                            $endTime   = $break->break_end_date.' '.$break->break_end;
+                            $start = Carbon::parse($startTime);
+                            $end   = Carbon::parse($endTime);
+                            if ($end->greaterThan($start)) {
+                                $totalSeconds += $start->diffInSeconds($end);
+                            }
+                        } catch (\Exception $e) {
+                            \Log::error("Break calculation failed for Attendance ID: {$attendance->id} - " . $e->getMessage());
+                        }
+                    }
+                }
+                $attendance->totalBreakDuration = sprintf(
+                    '%02d:%02d:%02d',
+                    intdiv($totalSeconds, 3600),
+                    intdiv($totalSeconds % 3600, 60),
+                    $totalSeconds % 60
+                );
+                return $attendance;
+            });
+
+            return view('attendance.index', compact('attendanceEmployee', 'employeeList'));
         } else {
             return redirect()->back()->with('error', __('Permission denied.'));
         }
@@ -184,6 +265,7 @@ class AttendanceEmployeeController extends Controller
                     'date' => 'required',
                     'clock_in' => 'required',
                     'clock_out' => 'required',
+                    'checkout_date' => 'required|date',
                 ]
             );
             if ($validator->fails()) {
@@ -226,34 +308,33 @@ class AttendanceEmployeeController extends Controller
                     $overtime = '00:00:00';
                 }
 
-                $clockInTime = $request->clock_in ? $request->clock_in : null;
-                $clockOutTime = $request->clock_out;
+                $clockInDateTime  = Carbon::parse($request->date . ' ' . $request->clock_in);
+                $clockOutDateTime = Carbon::parse($request->checkout_date . ' ' . $request->clock_out);
 
-                if ($clockInTime) {
-                    //  Calculate Checkout Time Difference
-                    $checkoutTimeDiffSeconds = strtotime($clockOutTime) - strtotime($clockInTime);
-                    if ($checkoutTimeDiffSeconds > 0) {
-                        $checkoutHours = floor($checkoutTimeDiffSeconds / 3600);
-                        $checkoutMinutes = floor(($checkoutTimeDiffSeconds % 3600) / 60);
-                        $checkoutSeconds = floor($checkoutTimeDiffSeconds % 60);
-                        $checkoutTimeDiff = sprintf('%02d:%02d:%02d', $checkoutHours, $checkoutMinutes, $checkoutSeconds);
-                    } else {
-                        $checkoutTimeDiff = '00:00:00';
-                    }
+                if ($clockOutDateTime->greaterThan($clockInDateTime)) {
+                    $checkoutSeconds = $clockInDateTime->diffInSeconds($clockOutDateTime);
+                    $hours   = floor($checkoutSeconds / 3600);
+                    $minutes = floor(($checkoutSeconds % 3600) / 60);
+                    $seconds = $checkoutSeconds % 60;
+                    $checkoutTimeDiff = sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
                 } else {
                     $checkoutTimeDiff = '00:00:00';
                 }
 
+                // checkout_date
+
                 $employeeAttendance                = new AttendanceEmployee();
                 $employeeAttendance->employee_id   = $request->employee_id;
                 $employeeAttendance->date          = $request->date;
-                $employeeAttendance->status        = 'Present';
+                $employeeAttendance->device_type_clockin        = 'desktop';
                 $employeeAttendance->clock_in      = $request->clock_in . ':00';
                 $employeeAttendance->clock_out     = $request->clock_out . ':00';
                 $employeeAttendance->late          = $late;
+                $employeeAttendance->checkout_date = $request->checkout_date;
                 $employeeAttendance->early_leaving = $earlyLeaving;
                 $employeeAttendance->overtime      = $overtime;
                 $employeeAttendance->total_rest    = '00:00:00';
+                $employeeAttendance->status        = 'Present';
                 $employeeAttendance->created_by    = \Auth::user()->creatorId();
                 $employeeAttendance->checkout_time_diff    = $checkoutTimeDiff;
                 $employeeAttendance->work_from_home   = $request->has('work_from_home') ? 1 : 0;
@@ -448,6 +529,107 @@ class AttendanceEmployeeController extends Controller
         return response()->json(['success' => true, 'message' => 'Work from Home status updated successfully.']);
     }
 
+
+    public function updateTime(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|exists:attendance_employees,id',
+            'clock_in' => 'required|date_format:H:i',
+            'clock_out' => 'nullable|date_format:H:i',
+            'checkout_date' => 'nullable|date',
+            'date' => 'nullable|date'
+        ]);
+
+        // Permission - adjust if employees should be allowed
+        if (!\Auth::user()->can('Edit Attendance') && !in_array(\Auth::user()->type, ['company','hr'])) {
+            return response()->json(['success' => false, 'message' => 'Permission denied.'], 403);
+        }
+
+        $attendance = AttendanceEmployee::find($request->id);
+        if (! $attendance) {
+            return response()->json(['success' => false, 'message' => 'Attendance not found.'], 404);
+        }
+
+        // Normalize/save values
+        $attendance->clock_in = $request->clock_in . ':00';
+
+        if ($request->filled('clock_out')) {
+            $attendance->clock_out = $request->clock_out . ':00';
+        } else {
+            // default if not provided
+            $attendance->clock_out = '00:00:00';
+        }
+
+        // checkout_date: null if not provided
+        $attendance->checkout_date = $request->filled('checkout_date') ? $request->checkout_date : null;
+
+        // optionally update the attendance date
+        if ($request->filled('date')) {
+            $attendance->date = $request->date;
+        }
+
+        $attendance->save();
+
+        // Recompute checkout_time_diff if both clock_in & clock_out & checkout_date present
+        $checkoutTimeDiff = '00:00:00';
+        if (
+            !empty($attendance->clock_in) && $attendance->clock_in !== '00:00:00' &&
+            !empty($attendance->clock_out) && $attendance->clock_out !== '00:00:00' &&
+            !empty($attendance->checkout_date)
+        ) {
+            try {
+                $clockInDate = $attendance->date ?? date('Y-m-d');
+                $clockInDT = Carbon::parse($clockInDate . ' ' . $attendance->clock_in);
+                $clockOutDT = Carbon::parse($attendance->checkout_date . ' ' . $attendance->clock_out);
+
+                // If clock_out datetime is earlier than clock_in, treat as next day (common rule)
+                if ($clockOutDT->lessThan($clockInDT)) {
+                    $clockOutDT->addDay();
+                }
+
+                if ($clockOutDT->greaterThan($clockInDT)) {
+                    $sec = $clockInDT->diffInSeconds($clockOutDT);
+                    $checkoutTimeDiff = sprintf('%02d:%02d:%02d', intdiv($sec,3600), intdiv($sec % 3600,60), $sec % 60);
+                } else {
+                    $checkoutTimeDiff = '00:00:00';
+                }
+            } catch (\Exception $e) {
+                \Log::error("checkout_time_diff calc error for attendance {$attendance->id}: ".$e->getMessage());
+                $checkoutTimeDiff = '00:00:00';
+            }
+
+            $attendance->checkout_time_diff = $checkoutTimeDiff;
+            $attendance->save();
+        } else {
+            // clear if incomplete
+            $attendance->checkout_time_diff = '00:00:00';
+            $attendance->save();
+        }
+
+        // Prepare display values
+        $clockInDisplay = \Auth::user()
+            ? \Auth::user()->timeFormat($attendance->clock_in)
+            : Carbon::createFromFormat('H:i:s', $attendance->clock_in)->format('h:i A');
+
+        $clockOutDisplay = ($attendance->clock_out && $attendance->clock_out !== '00:00:00')
+            ? (\Auth::user() ? \Auth::user()->timeFormat($attendance->clock_out) : Carbon::createFromFormat('H:i:s', $attendance->clock_out)->format('h:i A'))
+            : '00:00';
+
+        $checkoutDateDisplay = $attendance->checkout_date ? Carbon::parse($attendance->checkout_date)->format('Y-m-d') : null;
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Attendance updated successfully.',
+            'clock_in_24' => Carbon::createFromFormat('H:i:s', $attendance->clock_in)->format('H:i'),
+            'clock_in_display' => $clockInDisplay,
+            'clock_out_24' => ($attendance->clock_out && $attendance->clock_out !== '00:00:00') ? Carbon::createFromFormat('H:i:s', $attendance->clock_out)->format('H:i') : '00:00',
+            'clock_out_display' => $clockOutDisplay,
+            'checkout_date' => $checkoutDateDisplay,
+            'checkout_time_diff' => $attendance->checkout_time_diff ?? '00:00:00',
+        ]);
+    }
+
+
     public function update(Request $request, $id)
     {
         $settings = Utility::settings();
@@ -456,8 +638,7 @@ class AttendanceEmployeeController extends Controller
 
         if (\Auth::user()->type == 'company' || \Auth::user()->type == 'hr') {
             $employeeId      = AttendanceEmployee::where('employee_id', $request->employee_id)->first();
-            $check = AttendanceEmployee::where('id', '=', $id)->where('employee_id', '=', $request->employee_id)->where('date', $request->date)->first();
-
+            $check = AttendanceEmployee::where('id', '=', $id)->where('employee_id', '=', $request->employee_id)->first();
 
             if (!empty($employeeId) || !empty($check)) {
                 $startTime = Utility::getValByName('company_start_time');
@@ -465,6 +646,7 @@ class AttendanceEmployeeController extends Controller
 
                 $clockIn = $request->clock_in;
                 $clockOut = $request->clock_out;
+                $checkoutDate = $request->checkout_date ?? $request->date;
 
                 if ($clockIn) {
                     $status = "present";
@@ -505,15 +687,19 @@ class AttendanceEmployeeController extends Controller
                     $clockInTime = $request->clock_in ? $request->clock_in : null;
                     $clockOutTime = $request->clock_out;
 
+                    $clockInDateTime  = Carbon::parse($request->date . ' ' . $clockIn);
+                    $clockOutDateTime = Carbon::parse($checkoutDate . ' ' . $clockOut);
+
 
                     if ($clockInTime) {
                         //  Calculate Checkout Time Difference
-                        $checkoutTimeDiffSeconds = strtotime($clockOutTime) - strtotime($clockInTime);
-                        if ($checkoutTimeDiffSeconds > 0) {
-                            $checkoutHours = floor($checkoutTimeDiffSeconds / 3600);
-                            $checkoutMinutes = floor(($checkoutTimeDiffSeconds % 3600) / 60);
-                            $checkoutSeconds = floor($checkoutTimeDiffSeconds % 60);
-                            $checkoutTimeDiff = sprintf('%02d:%02d:%02d', $checkoutHours, $checkoutMinutes, $checkoutSeconds);
+                        if ($clockOutDateTime->greaterThan($clockInDateTime)) {
+                            $checkoutSeconds = $clockInDateTime->diffInSeconds($clockOutDateTime);
+                            $checkoutTimeDiff = sprintf('%02d:%02d:%02d',
+                                floor($checkoutSeconds / 3600),
+                                floor(($checkoutSeconds % 3600) / 60),
+                                $checkoutSeconds % 60
+                            );
                         } else {
                             $checkoutTimeDiff = '00:00:00';
                         }
@@ -527,9 +713,11 @@ class AttendanceEmployeeController extends Controller
                         'overtime' => $overtime,
                         'clock_in' => $clockIn,
                         'clock_out' => $clockOut,
-                        'checkout_date' => $check->date,
+                        'checkout_date' => $checkoutDate,
+                        'date' => $request->date,
                         'checkout_time_diff' => $checkoutTimeDiff,
-                        'work_from_home' => $request->has('work_from_home') ? 1 : 0
+                        'work_from_home' => $request->has('work_from_home') ? 1 : 0,
+                        'is_leave' => $request->has('is_leave') ? 1 : 0
                     ]);
 
                     return redirect()->route('attendanceemployee.index')->with('success', __('Employee attendance successfully updated.'));
@@ -595,7 +783,7 @@ class AttendanceEmployeeController extends Controller
             $attendanceEmployee['clock_out']     = $time;
             $attendanceEmployee['early_leaving'] = $earlyLeaving;
             $attendanceEmployee['overtime']      = $overtime;
-            $attendanceEmployee['checkout_date']      = $clockOutTime;
+            $attendanceEmployee['checkout_date']      = $date;
             $attendanceEmployee['checkout_time_diff']      = $checkoutTimeDiff;
 
             if (!empty($request->date)) {
@@ -753,13 +941,184 @@ class AttendanceEmployeeController extends Controller
     // }
 
 
+    public function employee_clockout(Request $request, $id)
+    {
+        $settings = Utility::settings();
+        date_default_timezone_set($settings['timezone']); // Set timezone
+
+        $employeeId = !empty(\Auth::user()->employee) ? \Auth::user()->employee->id : 0;
+        $todayAttendance = AttendanceEmployee::where('employee_id', '=', $employeeId)
+                                              ->where('date', date('Y-m-d'))
+                                              ->first();
+
+        if (Auth::user()->type == 'employee') {
+            $date = date("Y-m-d");
+            $time = date("H:i:s");
+
+            // Early Leaving Calculation
+            $startTime = Utility::getValByName('company_start_time');
+            $endTime = Utility::getValByName('company_end_time');
+            $totalEarlyLeavingSeconds = strtotime($date . $endTime) - time();
+            $hours = floor($totalEarlyLeavingSeconds / 3600);
+            $mins = floor($totalEarlyLeavingSeconds / 60 % 60);
+            $secs = floor($totalEarlyLeavingSeconds % 60);
+            $earlyLeaving = sprintf('%02d:%02d:%02d', $hours, $mins, $secs);
+
+            // Overtime Calculation
+            if (time() > strtotime($date . $endTime)) {
+                $totalOvertimeSeconds = time() - strtotime($date . $endTime);
+                $hours = floor($totalOvertimeSeconds / 3600);
+                $mins = floor($totalOvertimeSeconds / 60 % 60);
+                $secs = floor($totalOvertimeSeconds % 60);
+                $overtime = sprintf('%02d:%02d:%02d', $hours, $mins, $secs);
+            } else {
+                $overtime = '00:00:00';
+            }
+
+            // Get attendance record
+            $attendanceRecord = AttendanceEmployee::where('id', $id)->first();
+            if (!$attendanceRecord) {
+                return response()->json(['error' => 'Attendance record not found'], 404);
+            }
+
+            $clockInDateTime = $attendanceRecord->date . ' ' . $attendanceRecord->clock_in; 
+            $clockOutTime = $time;  // Current time as clock-out time
+
+            // Check if the checkout time is on the next day
+            $checkoutDateTime = $date . ' ' . $clockOutTime; // Combine date and time for checkout
+
+            // Calculate checkout time difference using full datetime values
+            $checkoutTimeDiffSeconds = strtotime($checkoutDateTime) - strtotime($clockInDateTime);
+            if ($checkoutTimeDiffSeconds > 0) {
+                // Valid checkout (same day or next day)
+                $checkoutHours = floor($checkoutTimeDiffSeconds / 3600);
+                $checkoutMinutes = floor(($checkoutTimeDiffSeconds % 3600) / 60);
+                $checkoutSeconds = floor($checkoutTimeDiffSeconds % 60);
+                $checkoutTimeDiff = sprintf('%02d:%02d:%02d', $checkoutHours, $checkoutMinutes, $checkoutSeconds);
+            } else {
+                // If the checkout time is invalid (shouldn't happen)
+                $checkoutTimeDiff = '00:00:00';
+                $date = date('Y-m-d', strtotime($date . ' +1 day'));  // Set checkout date to next day
+            }
+            
+            // Prepare data to update
+            $attendanceEmployee = [
+                'clock_out' => $time,
+                'early_leaving' => $earlyLeaving,
+                'overtime' => $overtime,
+                'checkout_date' => $date,  // Use the adjusted date if needed
+                'checkout_time_diff' => $checkoutTimeDiff,
+                'device_type_clockout' => Get_Device_Type(),
+            ];
+
+            // Check if a custom date is provided in the request
+            if (!empty($request->date)) {
+                $attendanceEmployee['date'] = $request->date;
+            }
+
+            // Update the attendance record
+            AttendanceEmployee::where('id', $id)->update($attendanceEmployee);
+
+            return redirect()->route('dashboard')->with('success', __('Employee successfully clocked out.'));
+        } else {
+            return response()->json(['error' => 'Attendance record not found'], 404);
+        }
+    }
+
+    public function employee_clockoutOld(Request $request, $id)
+    {
+        $settings = Utility::settings();
+
+        date_default_timezone_set($settings['timezone']); // Set timezone
+
+
+        $employeeId      = !empty(\Auth::user()->employee) ? \Auth::user()->employee->id : 0;
+        $todayAttendance = AttendanceEmployee::where('employee_id', '=', $employeeId)->where('date', date('Y-m-d'))->first();
+
+        $startTime = Utility::getValByName('company_start_time');
+        $endTime   = Utility::getValByName('company_end_time');
+        if (Auth::user()->type == 'employee') {
+
+            $date = date("Y-m-d");
+            $time = date("H:i:s");
+
+            //early Leaving
+            $totalEarlyLeavingSeconds = strtotime($date . $endTime) - time();
+            $hours                    = floor($totalEarlyLeavingSeconds / 3600);
+            $mins                     = floor($totalEarlyLeavingSeconds / 60 % 60);
+            $secs                     = floor($totalEarlyLeavingSeconds % 60);
+            $earlyLeaving             = sprintf('%02d:%02d:%02d', $hours, $mins, $secs);
+
+            if (time() > strtotime($date . $endTime)) {
+                //Overtime
+                $totalOvertimeSeconds = time() - strtotime($date . $endTime);
+                $hours                = floor($totalOvertimeSeconds / 3600);
+                $mins                 = floor($totalOvertimeSeconds / 60 % 60);
+                $secs                 = floor($totalOvertimeSeconds % 60);
+                $overtime             = sprintf('%02d:%02d:%02d', $hours, $mins, $secs);
+            } else {
+                $overtime = '00:00:00';
+            }
+
+
+
+            // Get clock-in time for the employee
+            $attendanceRecord = AttendanceEmployee::where('id', $id)->first();
+            $clockInTime = $attendanceRecord ? $attendanceRecord->clock_in : null;
+            $clockOutTime = date("H:i:s");
+
+            if ($clockInTime) {
+                //  Calculate Checkout Time Difference
+                $checkoutTimeDiffSeconds = strtotime($clockOutTime) - strtotime($clockInTime);
+                if ($checkoutTimeDiffSeconds > 0) {
+                    $checkoutHours = floor($checkoutTimeDiffSeconds / 3600);
+                    $checkoutMinutes = floor(($checkoutTimeDiffSeconds % 3600) / 60);
+                    $checkoutSeconds = floor($checkoutTimeDiffSeconds % 60);
+                    $checkoutTimeDiff = sprintf('%02d:%02d:%02d', $checkoutHours, $checkoutMinutes, $checkoutSeconds);
+                } else {
+                    $checkoutTimeDiff = '00:00:00';
+                }
+            } else {
+                $checkoutTimeDiff = '00:00:00';
+            }
+
+
+            $attendanceEmployee['clock_out']     = $time;
+            $attendanceEmployee['early_leaving'] = $earlyLeaving;
+            $attendanceEmployee['overtime']      = $overtime;
+            $attendanceEmployee['checkout_date']      = $date;
+            $attendanceEmployee['checkout_time_diff']      = $checkoutTimeDiff;
+
+            if (!empty($request->date)) {
+                $attendanceEmployee['date']       =  $request->date;
+            }
+            AttendanceEmployee::where('id', $id)->update($attendanceEmployee);
+
+            return redirect()->route('dashboard')->with('success', __('Employee successfully clock Out.'));
+        }else {
+            return response()->json(['error' => 'Attendance record not found'], 404);
+        }
+    }
+
     public function startBreak(Request $request)
     {
         $settings = Utility::settings();
+        $date = date("Y-m-d");
+        $time = date("H:i:s");
         date_default_timezone_set($settings['timezone']); // Set timezone
         $attendance = AttendanceEmployee::where('employee_id', $request->employee_id)
                                         ->where('date', today())
                                         ->first();
+        // If no attendance is found for the current date, check for the previous day
+        if (!$attendance) {
+            $previousDate = date('Y-m-d', strtotime($date . ' -1 day'));
+            $currentHour = date("H");
+            if ($currentHour < Get_MaxCheckOutTime()) {
+                $attendance = AttendanceEmployee::where('employee_id', $request->employee_id)
+                                        ->where('date', $previousDate)
+                                        ->first();
+            }
+        }
 
         if (!$attendance) {
             return response()->json(['error' => 'Attendance record not found'], 404);
@@ -770,11 +1129,12 @@ class AttendanceEmployeeController extends Controller
             return response()->json(['error' => 'A break is already active. End the current break first.'], 400);
         }
 
-        $time = date("H:i:s");
+        
 
         $break = AttendanceBreak::create([
             'attendance_id' => $attendance->id,
             'break_start' => $time,
+            'break_start_date' => $date,
         ]);
 
         return response()->json(['message' => 'Break started successfully']);
@@ -783,10 +1143,22 @@ class AttendanceEmployeeController extends Controller
     public function endBreak(Request $request)
     {
         $settings = Utility::settings();
+        $date = date("Y-m-d");
+        $time = date("H:i:s");
         date_default_timezone_set($settings['timezone']); // Set timezone
         $attendance = AttendanceEmployee::where('employee_id', $request->employee_id)
                                         ->where('date', today())
                                         ->first();
+        // If no attendance is found for the current date, check for the previous day
+        if (!$attendance) {
+            $previousDate = date('Y-m-d', strtotime($date . ' -1 day'));
+            $currentHour = date("H");
+            if ($currentHour < Get_MaxCheckOutTime()) {
+                $attendance = AttendanceEmployee::where('employee_id', $request->employee_id)
+                                        ->where('date', $previousDate)
+                                        ->first();
+            }
+        }
 
         if (!$attendance) {
             return response()->json(['error' => 'Attendance record not found'], 404);
@@ -801,9 +1173,9 @@ class AttendanceEmployeeController extends Controller
             return response()->json(['error' => 'No active break found'], 404);
         }
 
-        $time = date("H:i:s");
+        
 
-        $break->update(['break_end' => $time]);
+        $break->update(['break_end' => $time,'break_end_date' => $date]);
 
         return response()->json(['message' => 'Break ended successfully']);
     }
@@ -835,7 +1207,7 @@ class AttendanceEmployeeController extends Controller
             if ($todayAttendance->clock_out != '00:00:00') {
                 return redirect()->back()->with('error', __('You have already checked out today. No further check-in allowed.'));
             } else {
-                // Clock out logic
+                /*
                 $todayAttendance->clock_out = $time;
                 
                 // Calculate total worked hours
@@ -848,10 +1220,11 @@ class AttendanceEmployeeController extends Controller
                 $secs = abs(floor($totalWorkSeconds % 60));
                 $totalWorkTime = sprintf('%02d:%02d:%02d', $hours, $mins, $secs);
 
-                $todayAttendance->overtime = $totalWorkTime; // Storing total work time in overtime field
+                $todayAttendance->overtime = $totalWorkTime; 
                 $todayAttendance->save();
 
                 return redirect()->back()->with('success', __('Employee Successfully Clocked Out.'));
+                */
             }
         }
 
@@ -882,6 +1255,7 @@ class AttendanceEmployeeController extends Controller
         $employeeAttendance->total_rest = '00:00:00';
         $employeeAttendance->created_by = \Auth::user()->id;
         $employeeAttendance->work_from_home = $request->has('work_from_home') ? 1 : 0;
+        $employeeAttendance->device_type_clockin = Get_Device_Type();
         $employeeAttendance->save();
 
         return redirect()->back()->with('success', __('Employee Successfully Clocked In.'));

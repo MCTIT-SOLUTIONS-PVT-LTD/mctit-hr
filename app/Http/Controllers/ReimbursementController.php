@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
 use App\Models\Reimbursement;
 use Illuminate\Support\Facades\Auth;
@@ -20,29 +21,60 @@ use App\Mail\ReimbursementYesReceivedMail;
 use App\Mail\ReimbursementReminderApprovalMail;
 use App\Mail\ReimbursementResubmittingtMail;
 use App\Mail\ReimbursementQueryRaisedMail;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 
 class ReimbursementController extends Controller
 {
 
-    // ✅ Admin Panel to See All Requests
     public function index()
     {
-        $query = Reimbursement::with('employee', 'assignedUser')->latest();
+        // Base query with role-based visibility
+        $base = Reimbursement::query()->with('employee','assignedUser');
 
-        // Exclude Draft status for non-employees (Managers, CEO)
-        if (\Auth::user()->type == 'employee') {
-            $query->where('employee_id', Auth::id());
+        if (Auth::user()->type === 'employee') {
+            $base->where('employee_id', Auth::id());
         } else {
-            // For non-employees, exclude Draft status
-            $query->where('status', '!=', 'Draft');
+            // Managers/CEO/etc. – hide Draft
+            $base->where('status', '!=', 'Draft');
         }
 
-        $reimbursements = $query->get();
+        // Table data
+        $reimbursements = (clone $base)->latest()->get();
 
-        // echo "<pre>";print_r($reimbursements);exit;
+        // === Aggregates for Pending / Received / Approved ===
+        $wanted = ['Pending','Received','Approved','Paid'];
 
-        return view('reimbursements.index', compact('reimbursements'));
+        $aggregates = (clone $base)
+            ->selectRaw('status, COUNT(*) AS cnt, COALESCE(SUM(amount),0) AS total')
+            ->whereIn('status', $wanted)
+            ->groupBy('status')
+            ->get();
+
+        // Ensure all 3 keys exist even if 0 rows
+        $counts  = array_fill_keys($wanted, 0);
+        $amounts = array_fill_keys($wanted, 0.0);
+
+        foreach ($aggregates as $row) {
+            $counts[$row->status]  = (int) $row->cnt;
+            $amounts[$row->status] = (float) $row->total;
+        }
+
+        return view('reimbursements.index', compact('reimbursements','counts','amounts'));
+    }
+
+    public function indexold() { 
+        $query = Reimbursement::with('employee', 'assignedUser')->latest(); 
+        // Exclude Draft status for non-employees (Managers, CEO) 
+        if (\Auth::user()->type == 'employee') { 
+            $query->where('employee_id', Auth::id()); 
+        } else { 
+            // For non-employees, exclude Draft status 
+            $query->where('status', '!=', 'Draft'); 
+        } 
+        $reimbursements = $query->get(); 
+        // echo "<pre>";print_r($reimbursements);exit; 
+        return view('reimbursements.index', compact('reimbursements')); 
     }
 
     public function create()
@@ -99,7 +131,7 @@ class ReimbursementController extends Controller
             ]);
 
             if($settings['is_email_trigger'] === 'on'){
-                $toEmail = 'rmb@miraclecloud-technology.com';
+                $toEmail = $settings['DIRECTOR_EMAIL'];
                 //$toEmail = 'mctsource@miraclecloud-technology.com';
                 Mail::to($toEmail)->send(new ReimbursementRequestMail($reimbursement));
             }
@@ -208,13 +240,13 @@ class ReimbursementController extends Controller
 
         if($settings['is_email_trigger'] === 'on'){
             if($status == 'Pending'){
-                $toEmail = 'rmb@miraclecloud-technology.com';
+                $toEmail = $settings['DIRECTOR_EMAIL'];
                 // $toEmail = 'mctsource@miraclecloud-technology.com';
                 Mail::to($toEmail)->send(new ReimbursementRequestMail($reimbursement));
             }
 
             if($status == 'Submitted'){
-                $toEmail = 'nkalma@miraclecloud-technology.com';
+                $toEmail = $settings['CFO_EMAIL'];
                 // $toEmail = 'mctsource@miraclecloud-technology.com';
                 Mail::to($toEmail)->send(new ReimbursementResubmittingtMail($reimbursement));
             }
@@ -255,14 +287,16 @@ class ReimbursementController extends Controller
         }
 
         if ($request->status == 'Send Follow Up Email') {
+
+            if($settings['is_email_trigger'] === 'on' && $Reimbursement->follow_up_email === 0){
+                $toEmail=$settings['DIRECTOR_EMAIL'];
+                Mail::to($toEmail)->send(new ReimbursementReminderApprovalMail($Reimbursement));
+            }
             
             $Reimbursement->follow_up_email = 1;
             $Reimbursement->save();
             
-            if($settings['is_email_trigger'] === 'on'){
-                 $toEmail='rmb@miraclecloud-technology.com';
-                Mail::to($toEmail)->send(new ReimbursementReminderApprovalMail($Reimbursement));
-            }
+            
            
 
             return redirect()->route('reimbursements.index')->with('success', __('Follow-up email sent successfully!') . 
@@ -277,7 +311,7 @@ class ReimbursementController extends Controller
             $Reimbursement->save();
             
             if($settings['is_email_trigger'] === 'on'){
-                $toEmail='nkalma@miraclecloud-technology.com';
+                $toEmail=$settings['CFO_EMAIL'];
                 Mail::to($toEmail)->send(new ReimbursementNotReceivedMail($Reimbursement));
             }
 
@@ -293,7 +327,7 @@ class ReimbursementController extends Controller
             $Reimbursement->save();
             
             if($settings['is_email_trigger'] === 'on'){
-                $toEmail='nkalma@miraclecloud-technology.com';
+                $toEmail=$settings['CFO_EMAIL'];
                 Mail::to($toEmail)->send(new ReimbursementYesReceivedMail($Reimbursement));
             }
 
@@ -313,7 +347,6 @@ class ReimbursementController extends Controller
             if($settings['is_email_trigger'] === 'on'){
                 Mail::to($Reimbursement->employee->email)->send(new ReimbursementApprovedMail($Reimbursement));
             }
-            
             
         }
 
@@ -353,6 +386,20 @@ class ReimbursementController extends Controller
                 Mail::to($Reimbursement->employee->email)->send(new ReimbursementPaidMail($Reimbursement));
             }
 
+        }else if ($request->status == 'Approved & Pay') {
+            $Reimbursement->approved_at = Carbon::now();
+            $Reimbursement->assign_to = Auth::id();
+            $Reimbursement->paid_by = Auth::id();
+            $Reimbursement->paid_at = Carbon::now();
+            $Reimbursement->remark = $request->remark;
+            $Reimbursement->paid_receipt = null;
+            $Reimbursement->status = 'Paid';
+            $Reimbursement->payment_type = 'UPI';
+
+            // Send Email
+            if($settings['is_email_trigger'] === 'on'){
+                Mail::to($Reimbursement->employee->email)->send(new ReimbursementPaidMail($Reimbursement));
+            }
         }else{
             $Reimbursement->status = $request->status;
         }
@@ -364,6 +411,48 @@ class ReimbursementController extends Controller
         return redirect()->route('reimbursements.index')->with('success', __('Reimbursement status successfully updated.') . 
                 ((!empty($resp) && $resp['is_success'] == false && !empty($resp['error'])) ? 
                 '<br> <span class="text-danger">' . $resp['error'] . '</span>' : ''));
+    }
+
+    public function generateQr($id)
+    {
+            $reimbursement = Reimbursement::find($id);
+            // $reimbursement_employee = 1;
+            
+            $employee = User::find($reimbursement->employee_id);
+
+            if (!$employee || empty($employee->upi_id)) {
+                abort(404, 'UPI ID not found for this employee');
+            }
+
+            // sanitize inputs
+            $upiId = trim($employee->upi_id);
+            // remove accidental spaces inside UPI id (UPI ids should not contain spaces)
+            $upiId = str_replace(' ', '', $upiId);
+
+            $name = trim($employee->name);
+            $amount = number_format((float) $reimbursement->amount, 2, '.', ''); // ensures 2 decimals
+            $note = "Reimbursement R00{$reimbursement->id}";
+
+            // build UPI string: encode only parameter values (not the separators)
+            $upiString = "upi://pay?pa=" . rawurlencode($upiId)
+                       . "&pn=" . rawurlencode($name)
+                       . "&am=" . rawurlencode($amount)
+                       . "&cu=" . rawurlencode('INR')
+                       . "&tn=" . rawurlencode($note);
+
+            // Log the UPI string for debugging (check storage/logs/laravel.log)
+            Log::debug('Generated UPI string for QR: ' . $upiString);
+
+            try {
+                // Try PNG first (may require imagick)
+                $png = QrCode::format('png')->size(300)->errorCorrection('H')->generate($upiString);
+                return response($png, 200)->header('Content-Type', 'image/png');
+            } catch (\Throwable $e) {
+                // fallback to SVG if PNG backend fails (e.g., Imagick missing)
+                Log::warning('PNG generation failed for UPI QR, falling back to SVG. Error: ' . $e->getMessage());
+                $svg = QrCode::format('svg')->size(300)->errorCorrection('H')->generate($upiString);
+                return response($svg, 200)->header('Content-Type', 'image/svg+xml');
+            }
     }
 
 }

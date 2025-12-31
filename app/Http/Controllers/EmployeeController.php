@@ -29,6 +29,7 @@ use App\Models\JoiningLetter;
 use App\Models\LoginDetail;
 use App\Models\PaySlip;
 use Illuminate\Validation\Rule;
+use App\Models\AvailabilityStatusList;
 
 //use Faker\Provider\File;
 
@@ -247,7 +248,17 @@ class EmployeeController extends Controller
             $employee     = Employee::find($id);
             $employeesId  = \Auth::user()->employeeIdFormat($employee->employee_id);
 
-            return view('employee.edit', compact('employee', 'employeesId', 'branches', 'departments', 'designations', 'documents'));
+            $managerList = Employee::where('created_by', \Auth::user()->creatorId())
+                            ->where('user_id', '!=', \Auth::user()->id)
+                            ->where('is_manager', 1)
+                            ->orderBy('name', 'asc')
+                            ->pluck('name', 'id');
+            // Ensure it's an array for Form::select to match correctly
+            $selectedManagers = json_decode($employee->manages_id, true) ?? [];
+
+            $statuses = AvailabilityStatusList::all();
+
+            return view('employee.edit', compact('employee', 'employeesId', 'branches', 'departments', 'designations', 'documents','managerList','selectedManagers','statuses'));
         } else {
             return redirect()->back()->with('error', __('Permission denied.'));
         }
@@ -265,6 +276,7 @@ class EmployeeController extends Controller
                 'gender' => 'required',
                 'phone' => 'required|numeric',
                 'address' => 'required',
+                'relieving_date' => 'nullable|date|after_or_equal:dob',
             ];
 
             // if ($request->has('biometric_emp_id') && $employee->biometric_emp_id != $request->biometric_emp_id) {
@@ -332,8 +344,17 @@ class EmployeeController extends Controller
                 }
             }
 
-            $employee = Employee::findOrFail($id);
-            $input    = $request->all();
+            // Update manager list (store as JSON or array depending on DB design)
+            $employee->manages_id = $request->has('managers') ? json_encode($request->managers) : null;
+
+            // ✅ Handle work_from_home toggle (checkbox)
+            $employee->work_from_home = $request->has('work_from_home') ? 1 : 0;
+            $employee->relieving_date = $request->relieving_date ?? null;
+            $employee->employee_type = $request->employee_type ?? null;
+            $employee->availability_status = $request->input('availability_status');
+            // Update remaining fields
+            $input = $request->except(['document', 'managers', 'work_from_home']);
+
             $employee->fill($input)->save();
             if ($request->salary) {
                 return redirect()->route('setsalary.index')->with('success', 'Employee successfully updated.');

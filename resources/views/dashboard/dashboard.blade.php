@@ -37,24 +37,24 @@
                 <div class="row">
 
                     <div class="col-lg-4 col-md-6">
-
                         <div class="card stats-wrapper dash-info-card">
-                            <div class="card-body stats">
-                                <div class="row align-items-center justify-content-between">
-                                    <div class="col-auto mb-3 mb-sm-0">
-                                        <div class="d-flex align-items-center">
-                                            <div class="badge theme-avtar bg-primary">
-                                                <i class="ti ti-users"></i>
-                                            </div>
-                                            <div class="ms-3">
-                                                <small class="text-muted">{{ __('This Month') }}</small>
-                                                <h6 class="m-0"><a
-                                                    href="#">{{ __('Attandance') }}</a></h6>
+                            <div class="card-body p-3">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div class="d-flex align-items-center">
+                                        <div class="badge theme-avtar bg-primary">
+                                            <i class="ti ti-users"></i>
+                                        </div>
+                                        <div class="ms-3">
+                                            <h5 class="mb-0">Attendance Summary</h5>
+                                            <div>
+                                                <p class="text-muted text-sm mb-0">
+                                                    This Month Attandance: {{ $ThisMonthattendanceCount }}
+                                                </p>
+                                                <p class="text-muted text-sm mb-0">
+                                                    Last Month Attandance: {{ $LastMonthattendanceCount }}
+                                                </p>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div class="col-auto text-end">
-                                        <h4 class="m-0 text-primary">{{ $ThisMonthattendanceCount }}</h4>
                                     </div>
                                 </div>
                             </div>
@@ -62,24 +62,24 @@
                     </div>
 
                     <div class="col-lg-4 col-md-6">
-
                         <div class="card stats-wrapper dash-info-card">
-                            <div class="card-body stats">
-                                <div class="row align-items-center justify-content-between">
-                                    <div class="col-auto mb-3 mb-sm-0">
-                                        <div class="d-flex align-items-center">
-                                            <div class="badge theme-avtar bg-info">
-                                                <i class="ti ti-ticket"></i>
-                                            </div>
-                                            <div class="ms-3">
-                                                <small class="text-muted">{{ __('Last Month') }}</small>
-                                                <h6 class="m-0"><a
-                                                    href="#">{{ __('Attandance') }}</a></h6>
+                            <div class="card-body p-3">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div class="d-flex align-items-center">
+                                        <div class="badge theme-avtar bg-danger">
+                                            <i class="ti ti-clock"></i>
+                                        </div>
+                                        <div class="ms-3">
+                                            <h5 class="mb-0">Hours Summary</h5>
+                                            <div>
+                                                <p class="text-muted text-sm mb-0">
+                                                    This Month Hours: {{ $thisMonthNetHourse }}
+                                                </p>
+                                                <p class="text-muted text-sm mb-0">
+                                                    Last Month Hours: {{ $lastMonthNetHourse }}
+                                                </p>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div class="col-auto text-end">
-                                        <h4 class="m-0 text-info"> {{ $LastMonthattendanceCount }}</h4>
                                     </div>
                                 </div>
                             </div>
@@ -94,7 +94,7 @@
                                     <div class="col-auto mb-3 mb-sm-0">
                                         <div class="d-flex align-items-center">
                                             <div class="badge theme-avtar bg-success">
-                                                <i class="ti ti-clock"></i>
+                                                <i class="ti ti-car"></i>
                                             </div>
                                             <div class="ms-3">
                                                 <small class="text-muted">{{ __('This Month') }}</small>
@@ -104,7 +104,7 @@
                                         </div>
                                     </div>
                                     <div class="col-auto text-end">
-                                        <h4 class="m-0 text-info"> 0</h4>
+                                        <h4 class="m-0 text-info"> {{ $monthlyHolidayCount}}</h4>
                                     </div>
                                 </div>
                             </div>
@@ -123,9 +123,11 @@
                                             <h5 class="mb-0">Allowed Leave</h5>
                                             <div>
                                                 @foreach($leaveTypesAll as $type)
-                                                    <p class="text-muted text-sm mb-0">
-                                                        Total {{ $type->title }} : {{ $type->days }}
-                                                    </p>
+                                                    @if(  $type->title != 'Coming Late Office')
+                                                        <p class="text-muted text-sm mb-0">
+                                                            Total {{ $type->title }} : {{ $type->allowed_leave }}
+                                                        </p>
+                                                    @endif
                                                 @endforeach
                                             </div>
                                         </div>
@@ -153,10 +155,12 @@
                                             <h5 class="mb-0">Approved Leave</h5>
                                             <div>
                                                 @foreach ($leaveCounts as $leaveTypeId => $statuses)
-                                                    <p class="text-muted text-sm mb-0">
-                                                        Total {{ $leaveTypes[$leaveTypeId] ?? 'Unknown' }} :
-                                                        {{ $statuses['Approved'] ?? 0 }}
-                                                    </p>
+                                                    @if(  $leaveTypes[$leaveTypeId] != 'Coming Late Office')
+                                                        <p class="text-muted text-sm mb-0">
+                                                            Total {{ $leaveTypes[$leaveTypeId] ?? 'Unknown' }} :
+                                                            {{ $statuses['Approved'] ?? 0 }}
+                                                        </p>
+                                                    @endif
                                                 @endforeach
                                             </div>
                                         </div>
@@ -179,10 +183,12 @@
                                             <h5 class="mb-0">Rejected Leave</h5>
                                             <div>
                                                 @foreach ($leaveCounts as $leaveTypeId => $statuses)
-                                                    <p class="text-muted text-sm mb-0">
-                                                        Total {{ $leaveTypes[$leaveTypeId] ?? 'Unknown' }} :
-                                                        {{ $statuses['Rejected'] ?? 0 }}
-                                                    </p>
+                                                    @if(  $leaveTypes[$leaveTypeId] != 'Coming Late Office')
+                                                        <p class="text-muted text-sm mb-0">
+                                                            Total {{ $leaveTypes[$leaveTypeId] ?? 'Unknown' }} :
+                                                            {{ $statuses['Rejected'] ?? 0 }}
+                                                        </p>
+                                                    @endif
                                                 @endforeach
                                             </div>
                                         </div>
@@ -223,7 +229,7 @@
         </div>
        
         <div class="row">
-        <div class="col-xxl-6 col-md-6" >
+        <div class="col-xxl-5 col-md-5" >
             <div class="card">
                 <div class="card-header">
                     <div class="row">
@@ -253,7 +259,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-xxl-6 col-md-6">
+        <div class="col-xxl-7 col-md-7">
             <div class="card">
                 <div class="card-header">
                     <h5>{{ __('Mark Attandance') }}</h5>
@@ -385,33 +391,38 @@
                                 {{ Form::open(['url' => 'attendanceemployee/attendance', 'method' => 'post', 'id' => 'clockInForm']) }}
                                 @if (empty($employeeAttendance) || $employeeAttendance->clock_out != '00:00:00')
                                     <button type="submit" value="0" name="in" id="clock_in" class="btn btn-primary w-100">{{ __('CLOCK IN') }}</button>
-                                    <div class="form-check">
-                                        {{ Form::checkbox('work_from_home', 1, false, ['class' => 'form-check-input', 'id' => 'work_from_home_in']) }}
-                                        <label class="form-check-label" for="work_from_home_in">{{ __('Work from Home') }}</label>
-                                    </div>
+
+                                    @if($employeesinfo->work_from_home == 1)
+                                        <div class="form-check">
+                                            {{ Form::checkbox('work_from_home', 1, false, ['class' => 'form-check-input', 'id' => 'work_from_home_in']) }}
+                                            <label class="form-check-label" for="work_from_home_in">{{ __('Work from Home') }}</label>
+                                        </div>
+                                    @endif
                                 @else
                                     <button type="submit" class="btn btn-primary w-100 disabled" disabled>{{ __('CLOCK IN') }}</button>
 
-                                    <div class="form-check">
-                                        {{ Form::checkbox(
-                                            'work_from_home',
-                                            1,
-                                            $employeeAttendance->work_from_home == 1,  // Check if already enabled
-                                            [
-                                                'class' => 'form-check-input update-work-from-home-class',
-                                                'id' => 'work_from_home_in',
-                                                'data-id' => $employeeAttendance->id
-                                            ]
-                                        ) }}
-                                        <label class="form-check-label" for="work_from_home_in">{{ __('Work from Home') }}</label>
-                                    </div>
+                                    @if($employeesinfo->work_from_home == 1)
+                                        <div class="form-check">
+                                            {{ Form::checkbox(
+                                                'work_from_home',
+                                                1,
+                                                $employeeAttendance->work_from_home == 1,  // Check if already enabled
+                                                [
+                                                    'class' => 'form-check-input update-work-from-home-class',
+                                                    'id' => 'work_from_home_in',
+                                                    'data-id' => $employeeAttendance->id
+                                                ]
+                                            ) }}
+                                            <label class="form-check-label" for="work_from_home_in">{{ __('Work from Home') }}</label>
+                                        </div>
+                                    @endif
                                 @endif
                                 {{ Form::close() }}
                             </div>
 
                             <div class="col-6">
                                 @if (!empty($employeeAttendance) && $employeeAttendance->clock_out == '00:00:00')
-                                    {{ Form::model($employeeAttendance, ['route' => ['attendanceemployee.update', $employeeAttendance->id], 'method' => 'PUT']) }}
+                                    {{ Form::model($employeeAttendance, ['route' => ['attendance.employee_clockout', $employeeAttendance->id], 'method' => 'post']) }}
                                     <button type="submit" id="clock_out" class="btn btn-danger w-100" onclick="return confirmClockOut();">{{ __('CLOCK OUT') }}</button>
                                 @else
                                     <button type="submit" class="btn btn-danger w-100 disabled" disabled>{{ __('CLOCK OUT') }}</button>
@@ -468,10 +479,10 @@
                                             <tbody id="break-log">
                                                 @foreach ($breakLogs as $break)
                                                     <tr>
-                                                        <td>{{ \Carbon\Carbon::parse($break->break_start)->format('h:i A') }}</td>
+                                                        <td>{{ date('d/m/Y', strtotime($break->break_start_date)).' '.\Carbon\Carbon::parse($break->break_start)->format('h:i A') }}</td>
                                                         <td>
                                                             @if ($break->break_end)
-                                                                {{\Carbon\Carbon::parse($break->break_end)->format('h:i A')}}
+                                                                {{date('d/m/Y', strtotime($break->break_end_date)).' '. \Carbon\Carbon::parse($break->break_end)->format('h:i A')}}
                                                             @else
                                                                 <span class="badge bg-danger p-1 px-1">In Progress</span>
                                                             @endif
@@ -609,9 +620,17 @@
                                         </td>
                                         <td>
                                             @if ($attendance->clock_out == '00:00:00' && $attendance->date < date('Y-m-d'))
-                                                <span class="badge bg-danger p-1 px-1">Missed</span>
+                                                <span class="badge bg-danger p-1 px-1">Missed Clock-out</span>
                                             @else
+                                                @if ($attendance->date != $attendance->checkout_date)
+                                                    {{ 
+                                                        $attendance->clock_out != '00:00:00' 
+                                                        ?  date('d/m/Y', strtotime($attendance->checkout_date)).' '.date('h:i A', strtotime($attendance->clock_out))  
+                                                        : '00:00' 
+                                                    }}
+                                                @else
                                                 {{ $attendance->clock_out != '00:00:00' ? date('h:i A', strtotime($attendance->clock_out)) : '00:00' }}
+                                                @endif
                                             @endif
                                         </td>
                                         <td>{{ $attendance->checkout_time_diff != '' ? $attendance->checkout_time_diff : '00:00:00' }}</td>
@@ -661,16 +680,7 @@
                                                 <br /> <span class="badge bg-primary">{{ $leave->early_time }}</span>
                                             @endif
                                             <br />
-                                            @switch($leave->half_day_type)
-                                                @case('morning')
-                                                    <div class="badge bg-dark">{{ __('1st H/D (Morning)') }}</div>
-                                                    @break
-                                                @case('afternoon')
-                                                    <div class="badge bg-danger">{{ __('2nd H/D (Afternoon)') }}</div>
-                                                    @break
-                                                @default
-                                                    <div></div>
-                                            @endswitch
+                                            <?php echo indexHalfLabel($leave); ?>
                                         </td>
                                         <td>
                                             @if($leave->start_date == $leave->end_date)
@@ -737,19 +747,8 @@
                                         <td>{{ !empty($leave->employee_id) ? $leave->employees->name : '' }}
                                             </td>
                                         <td>{{ !empty($leave->leave_type_id) ? $leave->leaveType->title : '' }}
-                                            
-                                            @switch($leave->half_day_type)
-                                                @case('morning')
-                                                    <br />
-                                                    <div class="badge bg-dark">{{ __('1st H/D (Morning)') }}</div>
-                                                    @break
-                                                @case('afternoon')
-                                                    <br />
-                                                    <div class="badge bg-danger">{{ __('2nd H/D (Afternoon)') }}</div>
-                                                    @break
-                                                @default
-                                                    <div></div>
-                                            @endswitch
+                                            <br />
+                                            <?php echo indexHalfLabel($leave); ?>
 
                                             @if ($leave->leave_type_id == 5 && !empty($leave->early_time))
                                                 <span class="badge bg-primary">{{ $leave->early_time }}</span>
@@ -768,29 +767,7 @@
                                         <!-- <td>{{ $leave->total_leave_days }}</td> -->
                                         <!-- <td style="white-space: normal; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word;width: 350px;">{{ $leave->leave_reason }}</td> -->
                                         <td>
-                                            @if ($leave->status == 'Pending')
-                                                <div class="badge bg-warning p-2 px-3 ">{{ $leave->status }}</div>
-                                            @elseif ($leave->status == 'In_Process')
-                                                <div class="badge p-2 px-3" style="background:#9D00FF;">In-Process</div>
-                                            @elseif ($leave->status == 'Manager_Approved')
-                                                <div class="badge p-2 px-3" style="background:#004000;">Manager-Approved</div>
-                                            @elseif ($leave->status == 'Manager_Rejected')
-                                                <div class="badge p-2 px-3" style="background:#800040;">Manager-Rejected</div>
-                                            @elseif ($leave->status == 'Partially_Approved')
-                                                <div class="badge p-2 px-3" style="background:#9ACD32;">Partially-Approved</div>
-                                            <!-- @elseif (in_array($leave->status, ['In_Process', 'Manager_Approved','Partially_Approved']) && \Auth::user()->type === 'employee')
-                                                <div class="badge p-2 px-3" style="background:#FA5F55;">In-Process</div> -->
-                                            @elseif($leave->status == 'Approved')
-                                                <div class="badge bg-success p-2 px-3 ">{{ $leave->status }}</div>
-                                            @elseif($leave->status == "Reject")
-                                                <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
-                                            @elseif($leave->status == "Draft")
-                                                <div class="badge bg-info p-2 px-3 ">{{ $leave->status }}</div>
-                                            @elseif($leave->status == "Cancelled")
-                                                <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
-                                            @elseif($leave->status == 'Pre-Approved')
-                                                <div class="text-success"><b>{{ $leave->status }}</b></div>
-                                            @endif
+                                            {!! leaveStatusBadge($leave) !!}
                                         </td>
                                         <!-- <td>{{ \Carbon\Carbon::parse($leave->applied_on)->format('d/m/Y') }}</td> -->
                                     </tr>
@@ -835,13 +812,13 @@
                 </div>
             </div>
         </div>
-    @else
+    @elseif (\Auth::user()->type != 'employee' && \Auth::user()->type != 'client')
         <div class="col-xxl-12">
 
             {{-- start --}}
             <div class="row">
 
-                <div class="col-lg-4 col-md-6">
+                <div class="col-lg-3 col-md-6">
 
                     <div class="card stats-wrapper dash-info-card">
                         <div class="card-body stats">
@@ -854,12 +831,12 @@
                                         <div class="ms-3">
                                             <small class="text-muted">{{ __('Total') }}</small>
                                             <h6 class="m-0"><a
-                                                href="{{ route('user.index') }}">{{ __('Staff') }}</a></h6>
+                                                href="#">{{ __('Staff') }}</a></h6>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="col-auto text-end">
-                                    <h4 class="m-0 text-primary">{{ $countUser + $countEmployee }}</h4>
+                                    <h4 class="m-0 text-primary">{{ $countEmployee - $relievedCount}}</h4>
                                 </div>
                             </div>
                         </div>
@@ -891,7 +868,7 @@
                     </div>
                 </div> -->
 
-                <div class="col-lg-4 col-md-6">
+                <div class="col-lg-3 col-md-6">
 
                     <div class="card stats-wrapper dash-info-card">
                         <div class="card-body stats">
@@ -904,7 +881,7 @@
                                         <div class="ms-3">
                                             <small class="text-muted">{{ __('Total') }}</small>
                                             <h6 class="m-0"><a
-                                                href="{{ route('ticket.index') }}">{{ __("Today's Not Clock In") }}</a></h6>
+                                                href="#">{{ __("Today's Not Clock In") }}</a></h6>
                                         </div>
                                     </div>
                                 </div>
@@ -941,7 +918,7 @@
                     </div>
                 </div> -->
 
-                <div class="col-lg-4 col-md-6">
+                <div class="col-lg-3 col-md-6">
 
                     <div class="card stats-wrapper dash-info-card">
                         <div class="card-body stats">
@@ -949,17 +926,42 @@
                                 <div class="col-auto mb-3 mb-sm-0">
                                     <div class="d-flex align-items-center">
                                         <div class="badge theme-avtar bg-warning">
-                                            <i class="ti ti-wallet"></i>
+                                            <i class="ti ti-clock"></i>
                                         </div>
                                         <div class="ms-3">
                                             <small class="text-muted">{{ __('Total') }}</small>
                                             <h6 class="m-0"><a
-                                                href="{{ route('accountlist.index') }}">{{ __("Today's Clock In") }}</a></h6>
+                                                href="#">{{ __("Today's Clock In") }}</a></h6>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="col-auto text-end">
                                     <h4 class="m-0 text-warning">{{ count($attendanceEmployee) }}</h4>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-3 col-md-6">
+
+                    <div class="card stats-wrapper dash-info-card">
+                        <div class="card-body stats">
+                            <div class="row align-items-center justify-content-between">
+                                <div class="col-auto mb-3 mb-sm-0">
+                                    <div class="d-flex align-items-center">
+                                        <div class="badge theme-avtar bg-danger">
+                                            <i class="ti ti-user"></i>
+                                        </div>
+                                        <div class="ms-3">
+                                            <small class="text-muted">{{ __('Total') }}</small>
+                                            <h6 class="m-0"><a
+                                                href="#">{{ __("Today's Clock Out") }}</a></h6>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-auto text-end">
+                                    <h4 class="m-0 text-danger">{{ $todaysClockOutCount }}</h4>
                                 </div>
                             </div>
                         </div>
@@ -1052,180 +1054,253 @@
         {{-- </div> --}}
 
         {{-- end --}}
-
+        
         <div class="col-xxl-12">
             <div class="row">
                 
-                    <div class="col-xl-5">
+                <div class="col-xl-7">
 
-                        <div class="card" style="display:none;">
-                            <div class="card-header card-body table-border-style">
-                                <h5>{{ __('Meeting schedule') }}</h5>
-                            </div>
-                            <div class="card-body" style="height: 324px; overflow:auto">
-                                <div class="table-responsive">
-                                    <table class="table">
-                                        <thead>
+                    <div class="card" style="display:none;">
+                        <div class="card-header card-body table-border-style">
+                            <h5>{{ __('Meeting schedule') }}</h5>
+                        </div>
+                        <div class="card-body" style="height: 324px; overflow:auto">
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>{{ __('Title') }}</th>
+                                            <th>{{ __('Date') }}</th>
+                                            <th>{{ __('Time') }}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="list">
+                                        @foreach ($meetings as $meeting)
                                             <tr>
-                                                <th>{{ __('Title') }}</th>
-                                                <th>{{ __('Date') }}</th>
-                                                <th>{{ __('Time') }}</th>
+                                                <td>{{ $meeting->title }}</td>
+                                                <td>{{ \Auth::user()->dateFormat($meeting->date) }}</td>
+                                                <td>{{ \Auth::user()->timeFormat($meeting->time) }}</td>
                                             </tr>
-                                        </thead>
-                                        <tbody class="list">
-                                            @foreach ($meetings as $meeting)
-                                                <tr>
-                                                    <td>{{ $meeting->title }}</td>
-                                                    <td>{{ \Auth::user()->dateFormat($meeting->date) }}</td>
-                                                    <td>{{ \Auth::user()->timeFormat($meeting->time) }}</td>
-                                                </tr>
-                                            @endforeach
-                                        </tbody>
-                                    </table>
-                                </div>
+                                        @endforeach
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
+                    </div>
 
-                        <div class="card">
-                            <div class="card-header card-body table-border-style">
-                                <h5>{{ __("Today's Not Clock In") }}</h5>
-                            </div>
-                            <div class="card-body" style="height:300px; overflow:auto">
-                                <div class="table-responsive">
-                                    <table class="table">
-                                        <thead>
-                                            <tr>
-                                                <th>{{ __('Name') }}</th>
-                                                <th>{{ __('Status') }}</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="list">
-                                            @foreach ($notClockInDetails as $notClockIn)
-                                                <tr>
-                                                    <td>{{ $notClockIn['employee_name'] }}</td>
-                                                    <td><span class="absent-btn {{ $notClockIn['leave_type'] != 'Absent' ? 'text-danger' : '' }}">
-                                                            {{ $notClockIn['leave_type'] }}
-                                                        </span>
-                                                    </td>
-                                                </tr>
-                                            @endforeach
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
+                    <div class="card">
+                        <div class="card-header card-body table-border-style">
+                            <h5>{{ __("Today's Not Clock In") }}</h5>
                         </div>
-
-                        <div class="card">
-                            <div class="card-header card-body table-border-style">
-                                <h5>{{ __("Today's Clock In") }}</h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="table-responsive">
-                                    <table class="table" id="pc-dt-simple">
-                                        <thead>
+                        <div class="card-body" style="height:300px; overflow:auto">
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>{{ __('Name') }}</th>
+                                            <th>{{ __('Status') }}</th>
+                                            <th>{{ __('Leave Status') }}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="list">
+                                        @foreach ($notClockInDetails as $notClockIn)
                                             <tr>
-                                                <!-- <th>{{ __('Date') }}</th> -->
-                                                @if (\Auth::user()->type != 'employee')
-                                                    <th>{{ __('Employee') }}</th>
-                                                @endif
-                                                <!-- <th>{{ __('Status') }}</th> -->
-                                                <th>{{ __('Clock In') }}</th>
-                                                <th>{{ __('Clock Out') }}</th>
-                                                <!-- <th>{{ __('Late') }}</th>
-                                                <th>{{ __('Early Leaving') }}</th>
-                                                <th>{{ __('Overtime') }}</th> -->
-                                                <th>{{ __('Total Hours') }}</th>
-                                                <th>{{ __('Total Break Log') }}</th>
-                                                <!-- @if (Gate::check('Edit Attendance') || Gate::check('Delete Attendance'))
-                                                    <th width="200px">{{ __('Action') }}</th>
-                                                @endif -->
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-
-                                            @foreach ($attendanceEmployee as $attendance)
-                                                <tr>
-                                                    <!-- <td>{{ \Carbon\Carbon::parse($attendance->date)->format('d/m/Y') }}</td> -->
-                                                    @if (\Auth::user()->type != 'employee')
-                                                        <td>{{ !empty($attendance->employee) ? $attendance->employee->name : '' }}
-                                                            @if($attendance->work_from_home)
-                                                                <span class="badge bg-secondary p-1 px-1">WFH</span>
-                                                            @endif
-
-                                                            @if ($attendance->isInBreak)
-                                                                <br /><span class="badge bg-danger p-1 px-1">On Break</span>
-                                                            @endif
-                                                        </td>
+                                                <td>{{ $notClockIn['employee_name'] }}</td>
+                                                <td><span class="absent-btn {{ $notClockIn['leave_type'] != 'Absent' ? 'text-danger' : '' }}">
+                                                        {{ $notClockIn['leave_type'] }}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    @if ($notClockIn['leave_id'] != 0)
+                                                        {!! leaveStatusBadgeList($notClockIn['leave_id']) !!}
                                                     @endif
-                                                    
-                                                    <!-- <td>{{ $attendance->status }}</td> -->
-                                                    <td>{{ $attendance->clock_in != '00:00:00' ? \Auth::user()->timeFormat($attendance->clock_in) : '00:00' }}
-                                                    </td>
-                                                    <td>
-                                                    
-                                                        @if ($attendance->clock_out == '00:00:00' && $attendance->date < date('Y-m-d'))
-                                                            <span class="badge bg-danger p-1 px-1">Missed Checkout</span>
-                                                        @else
-                                                            {{ $attendance->clock_out != '00:00:00' ? date('h:i A', strtotime($attendance->clock_out)) : '00:00' }}
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header card-body table-border-style">
+                            <h5>{{ __("Today's Clock In") }}</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table" id="pc-dt-simple">
+                                    <thead>
+                                        <tr>
+                                            <!-- <th>{{ __('Date') }}</th> -->
+                                            @if (\Auth::user()->type != 'employee')
+                                                <th>{{ __('Employee') }}</th>
+                                            @endif
+                                            <!-- <th>{{ __('Status') }}</th> -->
+                                            <th>{{ __('Clock In') }}</th>
+                                            <th>{{ __('Clock Out') }}</th>
+                                            <!-- <th>{{ __('Late') }}</th>
+                                            <th>{{ __('Early Leaving') }}</th>
+                                            <th>{{ __('Overtime') }}</th> -->
+                                            <th>{{ __('Total Hours') }}</th>
+                                            <th>{{ __('Total Break Log') }}</th>
+                                            <!-- @if (Gate::check('Edit Attendance') || Gate::check('Delete Attendance'))
+                                                <th width="200px">{{ __('Action') }}</th>
+                                            @endif -->
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+
+                                        @foreach ($attendanceEmployee as $attendance)
+                                            <tr>
+                                                <!-- <td>{{ \Carbon\Carbon::parse($attendance->date)->format('d/m/Y') }}</td> -->
+                                                @if (\Auth::user()->type != 'employee')
+                                                    <td>{{ !empty($attendance->employee) ? $attendance->employee->name : '' }}
+                                                        @if($attendance->work_from_home)
+                                                            <span class="badge bg-secondary p-1 px-1">WFH</span>
+                                                        @endif
+
+                                                        @if ($attendance->isInBreak)
+                                                            <br /><span class="badge bg-danger p-1 px-1">On Break</span>
                                                         @endif
                                                     </td>
-                                                    <!-- <td>{{ $attendance->late }}</td>
-                                                    <td>{{ $attendance->early_leaving }}</td>
-                                                    <td>{{ $attendance->overtime }}</td> -->
-                                                    <td>{{ $attendance->checkout_time_diff != '' ? $attendance->checkout_time_diff : '00:00:00' }}</td>
-                                                    <td>{{ $attendance->totalBreakDuration ?? '00:00:00' }}</td>
-                                                   <!--  @if (Gate::check('Edit Attendance') || Gate::check('Delete Attendance'))
-                                                    <td class="Action">
-                                                        
-                                                        <div class="dt-buttons">
-                                                        <span>
-                                                                @can('Edit Attendance')
-                                                                    <div class="action-btn bg-info me-2">
-                                                                        <a href="#" class="mx-3 btn btn-sm  align-items-center"
-                                                                            data-size="lg"
-                                                                            data-url="{{ URL::to('attendanceemployee/' . $attendance->id . '/edit') }}"
-                                                                            data-ajax-popup="true" data-size="md" data-bs-toggle="tooltip"
-                                                                            title="" data-title="{{ __('Edit Attendance') }}"
-                                                                            data-bs-original-title="{{ __('Edit') }}">
-                                                                            <span class="text-white"><i class="ti ti-pencil"></i></span>
-                                                                        </a>
-                                                                    </div>
-                                                                @endcan
+                                                @endif
+                                                
+                                                <!-- <td>{{ $attendance->status }}</td> -->
+                                                @php
+                                                    $clockInValue = $attendance->clock_in ?? '00:00:00';
+                                                    $clockOutValue = $attendance->clock_out ?? '00:00:00';
+                                                    $displayClockIn = $clockInValue != '00:00:00' ? \Auth::user()->timeFormat($clockInValue) : '00:00';
+                                                    $displayClockOut = $clockOutValue != '00:00:00' ? \Auth::user()->timeFormat($clockOutValue) : '00:00';
+                                                @endphp
+                                                <td>
+                                                    <a href="javascript:void(0)"
+                                                       class="edit-time btn-link"
+                                                       id="clock-in-{{ $attendance->id }}"
+                                                       data-id="{{ $attendance->id }}"
+                                                       data-time="{{ \Carbon\Carbon::createFromFormat('H:i:s', $clockInValue)->format('H:i') }}"
+                                                       data-date="{{ $attendance->date }}"
+                                                       data-clockout="{{ \Carbon\Carbon::createFromFormat('H:i:s', $clockOutValue)->format('H:i') }}"
+                                                       data-checkoutdate="{{ $attendance->checkout_date ?? '' }}"
+                                                       data-employee="{{ $attendance->employee->name ?? '' }}">
+                                                       <span class="clock-text">{{ $displayClockIn }}</span>
+                                                    </a>
 
-                                                                @can('Delete Attendance')
-                                                                    <div class="action-btn bg-danger">
-                                                                        {!! Form::open([
-                                                                            'method' => 'DELETE',
-                                                                            'route' => ['attendanceemployee.destroy', $attendance->id],
-                                                                            'id' => 'delete-form-' . $attendance->id,
-                                                                        ]) !!}
-                                                                        <a href="#"
-                                                                            class="mx-3 btn btn-sm  align-items-center bs-pass-para"
-                                                                            data-bs-toggle="tooltip" title=""
-                                                                            data-bs-original-title="Delete" aria-label="Delete"><span class="text-white"><i
-                                                                                class="ti ti-trash"></i></span></a>
-                                                                        </form>
-                                                                    </div>
-                                                                @endcan
-                                                            </span>
-                                                        </div>
-                                                        
-                                                    </td>
-                                                    @endif -->
-                                                </tr>
-                                            @endforeach
-                                        </tbody>
-                                    </table>
-                                </div>
+                                                    {!! Get_Device_Type_Icon($attendance->device_type_clockin,\Auth::user()->id) !!}
+                                                </td>
+                                                <td id="clock-out-{{ $attendance->id }}">
+                                                    <span class="clock-out-text">{{ $displayClockOut }}</span>
+                                                    {!! Get_Device_Type_Icon($attendance->device_type_clockout,\Auth::user()->id) !!}
+                                                </td>
+                                                <!-- <td>{{ $attendance->late }}</td>
+                                                <td>{{ $attendance->early_leaving }}</td>
+                                                <td>{{ $attendance->overtime }}</td> -->
+                                                <td id="checkout-time-diff-{{ $attendance->id }}">
+                                                    {{ $attendance->checkout_time_diff ?? '00:00:00' }}
+                                                </td>
+                                                <td>{{ $attendance->totalBreakDuration ?? '00:00:00' }}</td>
+                                               <!--  @if (Gate::check('Edit Attendance') || Gate::check('Delete Attendance'))
+                                                <td class="Action">
+                                                    
+                                                    <div class="dt-buttons">
+                                                    <span>
+                                                            @can('Edit Attendance')
+                                                                <div class="action-btn bg-info me-2">
+                                                                    <a href="#" class="mx-3 btn btn-sm  align-items-center"
+                                                                        data-size="lg"
+                                                                        data-url="{{ URL::to('attendanceemployee/' . $attendance->id . '/edit') }}"
+                                                                        data-ajax-popup="true" data-size="md" data-bs-toggle="tooltip"
+                                                                        title="" data-title="{{ __('Edit Attendance') }}"
+                                                                        data-bs-original-title="{{ __('Edit') }}">
+                                                                        <span class="text-white"><i class="ti ti-pencil"></i></span>
+                                                                    </a>
+                                                                </div>
+                                                            @endcan
+
+                                                            @can('Delete Attendance')
+                                                                <div class="action-btn bg-danger">
+                                                                    {!! Form::open([
+                                                                        'method' => 'DELETE',
+                                                                        'route' => ['attendanceemployee.destroy', $attendance->id],
+                                                                        'id' => 'delete-form-' . $attendance->id,
+                                                                    ]) !!}
+                                                                    <a href="#"
+                                                                        class="mx-3 btn btn-sm  align-items-center bs-pass-para"
+                                                                        data-bs-toggle="tooltip" title=""
+                                                                        data-bs-original-title="Delete" aria-label="Delete"><span class="text-white"><i
+                                                                            class="ti ti-trash"></i></span></a>
+                                                                    </form>
+                                                                </div>
+                                                            @endcan
+                                                        </span>
+                                                    </div>
+                                                    
+                                                </td>
+                                                @endif -->
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
-
                     </div>
+
+
+                    <!-- Edit Time Modal -->
+                    <div class="modal fade" id="editTimeModal" tabindex="-1" aria-hidden="true">
+                      <div class="modal-dialog modal-lg">
+                        <form id="edit-time-form">
+                          @csrf
+                          <div class="modal-content">
+                            <div class="modal-header">
+                              <h5 class="modal-title" id="editTimeModalLabel">Edit Attendance Time</h5>
+                              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                              <input type="hidden" id="attendance_id" name="id">
+
+                              <div class="row mb-3">
+                                <div class="col-md-6">
+                                  <label class="form-label">Clock In Date</label>
+                                  <input type="date" id="attendance_date" name="date" class="form-control" required readonly>
+                                </div>
+                                <div class="col-md-6">
+                                  <label class="form-label">Clock In Time</label>
+                                  <input type="time" id="clock_in_time" name="clock_in" class="form-control" required>
+                                </div>
+                              </div>
+
+                              <div class="row mb-3">
+                                <div class="col-md-6">
+                                  <label class="form-label">Clock Out Date (optional)</label>
+                                  <input type="date" id="checkout_date" name="checkout_date" class="form-control">
+                                  <small class="text-muted">Leave empty for NULL</small>
+                                </div>
+                                <div class="col-md-6">
+                                  <label class="form-label">Clock Out Time (optional)</label>
+                                  <input type="time" id="clock_out_time" name="clock_out" class="form-control">
+                                  <small class="text-muted">Leave empty to set default 00:00:00</small>
+                                </div>
+                              </div>
+
+                              <div id="edit-time-error" class="text-danger small" style="display:none;"></div>
+                            </div>
+                            <div class="modal-footer">
+                              <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                              <button type="submit" class="btn btn-primary btn-sm" id="save-time-btn">Save</button>
+                            </div>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+
+
+                </div>
 
 
                
 
-                <div class="col-xl-7">
+                <div class="col-xl-5">
                     <div class="card">
                         <div class="card-header">
                             <div class="row">
@@ -1260,6 +1335,7 @@
             </div>
            
         </div>
+        
 
         @can('Manage Leave')
         <div class="col-xl-12 col-lg-12 col-md-12">
@@ -1269,6 +1345,11 @@
                         <li class="nav-item">
                             <a class="nav-link active" id="people-on-leave-tab" data-bs-toggle="tab" href="#people-on-leave" role="tab" aria-controls="people-on-leave" aria-selected="true">
                                 <h6><span class="text-danger">{{ __('Today on Leave') }} ({{count($Todayleaves)}})</span></h6>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="next-working-day-leave-tab" data-bs-toggle="tab" href="#next-working-day-leave" role="tab" aria-controls="next-working-day-leave" aria-selected="true">
+                                <h6><span class="text-success">Tomorrow on Leave ({{ $nextWorkingDay->format('d/m/Y') }} | {{ $nextWorkingDay->format('l') }})</span></h6>
                             </a>
                         </li>
                         <li class="nav-item">
@@ -1314,16 +1395,7 @@
                                                         <span class="badge bg-primary">{{ $leave->early_time }}</span>
                                                     @endif
                                                     <br />
-                                                    @switch($leave->half_day_type)
-                                                        @case('morning')
-                                                            <div class="badge bg-dark">{{ __('1st H/D (Morning)') }}</div>
-                                                            @break
-                                                        @case('afternoon')
-                                                            <div class="badge bg-danger">{{ __('2nd H/D (Afternoon)') }}</div>
-                                                            @break
-                                                        @default
-                                                            <div></div>
-                                                    @endswitch
+                                                    <?php echo indexHalfLabel($leave); ?>
                                                 </td>
                                                 <td>
                                                     @if($leave->start_date == $leave->end_date)
@@ -1338,29 +1410,7 @@
                                                 <td>{{ $leave->total_leave_days }}</td>
                                                 <td style="white-space: normal; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word;width: 350px;">{{ $leave->leave_reason }}</td>
                                                 <td>
-                                                    @if ($leave->status == 'Pending')
-                                                        <div class="badge bg-warning p-2 px-3 ">{{ $leave->status }}</div>
-                                                    @elseif ($leave->status == 'In_Process')
-                                                        <div class="badge p-2 px-3" style="background:#9D00FF;">In-Process</div>
-                                                    @elseif ($leave->status == 'Manager_Approved')
-                                                        <div class="badge p-2 px-3" style="background:#004000;">Manager-Approved</div>
-                                                    @elseif ($leave->status == 'Manager_Rejected')
-                                                        <div class="badge p-2 px-3" style="background:#800040;">Manager-Rejected</div>
-                                                    @elseif ($leave->status == 'Partially_Approved')
-                                                        <div class="badge p-2 px-3" style="background:#9ACD32;">Partially-Approved</div>
-                                                    <!-- @elseif (in_array($leave->status, ['In_Process', 'Manager_Approved','Partially_Approved']) && \Auth::user()->type === 'employee')
-                                                        <div class="badge p-2 px-3" style="background:#FA5F55;">In-Process</div> -->
-                                                    @elseif($leave->status == 'Approved')
-                                                        <div class="badge bg-success p-2 px-3 ">{{ $leave->status }}</div>
-                                                    @elseif($leave->status == "Reject")
-                                                        <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
-                                                    @elseif($leave->status == "Draft")
-                                                        <div class="badge bg-info p-2 px-3 ">{{ $leave->status }}</div>
-                                                    @elseif($leave->status == "Cancelled")
-                                                        <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
-                                                    @elseif($leave->status == 'Pre-Approved')
-                                                        <div class="text-success"><b>{{ $leave->status }}</b></div>
-                                                    @endif
+                                                    {!! leaveStatusBadge($leave) !!}
                                                 </td>
                                                 <td>{{ \Carbon\Carbon::parse($leave->applied_on)->format('d/m/Y') }}</td>
 
@@ -1463,6 +1513,63 @@
                     </div>
 
                     <!-- People Today on Leave Tab -->
+                    <div class="tab-pane fade" id="next-working-day-leave" role="tabpanel" aria-labelledby="next-working-day-leave-tab">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table datatable">
+                                    <thead>
+                                        <tr>
+                                            @if (\Auth::user()->type != 'employee')
+                                                <th>{{ __('Employee') }}</th>
+                                            @endif
+                                            <th>{{ __('Leave Type') }}</th>
+                                            <th>{{ __('Leave Date') }}</th>
+                                            <!-- <th>{{ __('End Date') }}</th> -->
+                                            <th>{{ __('Total Days') }}</th>
+                                            <th>{{ __('Leave Reason') }}</th>
+                                            <th>{{ __('status') }}</th>
+                                            <th>{{ __('Applied On') }}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach ($NextDayLeaves as $leave)
+                                            <tr>
+                                                @if (\Auth::user()->type != 'employee')
+                                                    <td>{{ !empty($leave->employee_id) ? $leave->employees->name : '' }}
+                                                    </td>
+                                                @endif
+                                                <td>{{ !empty($leave->leave_type_id) ? $leave->leaveType->title : '' }}
+                                                    @if ($leave->leave_type_id == 5 && !empty($leave->early_time))
+                                                        <span class="badge bg-primary">{{ $leave->early_time }}</span>
+                                                    @endif
+                                                    <br />
+                                                    <?php echo indexHalfLabel($leave); ?>
+                                                </td>
+                                                <td>
+                                                    @if($leave->start_date == $leave->end_date)
+                                                        {{ \Carbon\Carbon::parse($leave->start_date)->format('d/m/Y') }}
+                                                    @else
+                                                        {{ \Carbon\Carbon::parse($leave->start_date)->format('d/m/Y') }} <b>To</b> {{ \Carbon\Carbon::parse($leave->end_date)->format('d/m/Y') }}
+                                                    @endif
+                                                    
+                                                </td>
+                                                <!-- <td>{{ \Auth::user()->dateFormat($leave->end_date) }}</td> -->
+
+                                                <td>{{ $leave->total_leave_days }}</td>
+                                                <td style="white-space: normal; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word;width: 350px;">{{ $leave->leave_reason }}</td>
+                                                <td>
+                                                    {!! leaveStatusBadge($leave) !!}
+                                                </td>
+                                                <td>{{ \Carbon\Carbon::parse($leave->applied_on)->format('d/m/Y') }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- People Today on Leave Tab -->
                     <div class="tab-pane fade show active" id="people-on-leave" role="tabpanel" aria-labelledby="people-on-leave-tab">
                         <div class="card-body">
                             <div class="table-responsive">
@@ -1493,16 +1600,7 @@
                                                         <span class="badge bg-primary">{{ $leave->early_time }}</span>
                                                     @endif
                                                     <br />
-                                                    @switch($leave->half_day_type)
-                                                        @case('morning')
-                                                            <div class="badge bg-dark">{{ __('1st H/D (Morning)') }}</div>
-                                                            @break
-                                                        @case('afternoon')
-                                                            <div class="badge bg-danger">{{ __('2nd H/D (Afternoon)') }}</div>
-                                                            @break
-                                                        @default
-                                                            <div></div>
-                                                    @endswitch
+                                                   <?php echo indexHalfLabel($leave); ?>
                                                 </td>
                                                 <td>
                                                     @if($leave->start_date == $leave->end_date)
@@ -1517,29 +1615,7 @@
                                                 <td>{{ $leave->total_leave_days }}</td>
                                                 <td style="white-space: normal; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word;width: 350px;">{{ $leave->leave_reason }}</td>
                                                 <td>
-                                                    @if ($leave->status == 'Pending')
-                                                        <div class="badge bg-warning p-2 px-3 ">{{ $leave->status }}</div>
-                                                    @elseif ($leave->status == 'In_Process')
-                                                        <div class="badge p-2 px-3" style="background:#9D00FF;">In-Process</div>
-                                                    @elseif ($leave->status == 'Manager_Approved')
-                                                        <div class="badge p-2 px-3" style="background:#004000;">Manager-Approved</div>
-                                                    @elseif ($leave->status == 'Manager_Rejected')
-                                                        <div class="badge p-2 px-3" style="background:#800040;">Manager-Rejected</div>
-                                                    @elseif ($leave->status == 'Partially_Approved')
-                                                        <div class="badge p-2 px-3" style="background:#9ACD32;">Partially-Approved</div>
-                                                    <!-- @elseif (in_array($leave->status, ['In_Process', 'Manager_Approved','Partially_Approved']) && \Auth::user()->type === 'employee')
-                                                        <div class="badge p-2 px-3" style="background:#FA5F55;">In-Process</div> -->
-                                                    @elseif($leave->status == 'Approved')
-                                                        <div class="badge bg-success p-2 px-3 ">{{ $leave->status }}</div>
-                                                    @elseif($leave->status == "Reject")
-                                                        <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
-                                                    @elseif($leave->status == "Draft")
-                                                        <div class="badge bg-info p-2 px-3 ">{{ $leave->status }}</div>
-                                                    @elseif($leave->status == "Cancelled")
-                                                        <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
-                                                    @elseif($leave->status == 'Pre-Approved')
-                                                        <div class="text-success"><b>{{ $leave->status }}</b></div>
-                                                    @endif
+                                                    {!! leaveStatusBadge($leave) !!}
                                                 </td>
                                                 <td>{{ \Carbon\Carbon::parse($leave->applied_on)->format('d/m/Y') }}</td>
                                             </tr>
@@ -1845,4 +1921,156 @@
             }
         });
     </script>
+
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <!-- bootstrap CSS/JS -->
+    <!-- <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"> -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script> -->
+    <script>
+    (function() {
+        function detectDeviceByWidth() {
+            let width = screen.width;
+            return (width <= 768) ? 'mobile' : 'desktop'; // threshold can be changed
+        }
+
+        let device = detectDeviceByWidth();
+
+        // Save in cookie for PHP
+        document.cookie = "device_type=" + device + "; path=/; max-age=" + (60*60*24) + "; SameSite=Lax";
+
+        // Also save in Laravel session (optional, for backend use)
+        fetch("{{ url('/set-device') }}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').getAttribute("content")
+            },
+            body: JSON.stringify({ device_type: device })
+        });
+    })();
+    </script>
+
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // delegated click handler so it works across pagination/pages
+        document.addEventListener('click', function (e) {
+          var anchor = e.target.closest('.edit-time');
+          if (!anchor) return;
+
+          e.preventDefault();
+
+          var id = anchor.dataset.id;
+          var time = anchor.dataset.time || '';
+          var date = anchor.dataset.date || '';
+          var clockout = anchor.dataset.clockout || '';
+          var checkoutdate = anchor.dataset.checkoutdate || '';
+          var employee = anchor.dataset.employee || '';
+
+          document.getElementById('attendance_id').value = id;
+          document.getElementById('clock_in_time').value = time;
+          document.getElementById('attendance_date').value = date;
+          document.getElementById('clock_out_time').value = clockout;
+          document.getElementById('checkout_date').value = checkoutdate;
+
+          // Set modal title with employee name
+          var title = document.getElementById('editTimeModalLabel');
+          title.textContent = 'Edit Attendance Time (' + employee + ')';
+
+          document.getElementById('edit-time-error').style.display = 'none';
+
+          var modalEl = document.getElementById('editTimeModal');
+          var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+          modal.show();
+        });
+
+      // AJAX submit
+      document.getElementById('edit-time-form').addEventListener('submit', function(e){
+        e.preventDefault();
+
+        var id = document.getElementById('attendance_id').value;
+        var clock_in = document.getElementById('clock_in_time').value; // HH:MM
+        var date = document.getElementById('attendance_date').value;
+        var clock_out = document.getElementById('clock_out_time').value || null; // optional
+        var checkout_date = document.getElementById('checkout_date').value || null;
+        var token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+        if (!id || !clock_in || !date) {
+          var err = document.getElementById('edit-time-error');
+          err.style.display = 'block';
+          err.textContent = 'Please fill required fields.';
+          return;
+        }
+
+        var saveBtn = document.getElementById('save-time-btn');
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+
+        fetch("{{ url('/attendanceemployee/update-time') }}", {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': token,
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({
+            id: id,
+            clock_in: clock_in,
+            date: date,
+            clock_out: clock_out,
+            checkout_date: checkout_date
+          })
+        }).then(function(res) {
+          return res.json();
+        }).then(function(json) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save';
+
+          if (json.success) {
+            // Update UI: clock-in anchor text & data attributes
+            var anchor = document.getElementById('clock-in-' + id);
+            if (anchor) {
+              anchor.setAttribute('data-time', json.clock_in_24 || clock_in);
+              anchor.setAttribute('data-date', date);
+              anchor.setAttribute('data-clockout', json.clock_out_24 || '00:00');
+              anchor.setAttribute('data-checkoutdate', json.checkout_date || '');
+              var span = anchor.querySelector('.clock-text');
+              if (span) span.textContent = json.clock_in_display || (clock_in + ' AM');
+            }
+
+            // Update clock-out display cell
+            var coEl = document.getElementById('clock-out-' + id);
+            if (coEl) {
+              var textEl = coEl.querySelector('.clock-out-text');
+              if (textEl) textEl.textContent = json.clock_out_display || '00:00';
+            }
+
+            // Update checkout_time_diff display cell
+            var diffEl = document.getElementById('checkout-time-diff-' + id);
+            if (diffEl) diffEl.textContent = json.checkout_time_diff || '00:00:00';
+
+            // Close modal
+            var modalEl = document.getElementById('editTimeModal');
+            var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.hide();
+          } else {
+            var err = document.getElementById('edit-time-error');
+            err.style.display = 'block';
+            err.textContent = json.message || 'Update failed';
+          }
+        }).catch(function(err) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save';
+          var eDiv = document.getElementById('edit-time-error');
+          eDiv.style.display = 'block';
+          eDiv.textContent = 'Network error';
+          console.error(err);
+        });
+
+      });
+    });
+    </script>
+
+
 @endpush

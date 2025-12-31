@@ -44,9 +44,10 @@
         </ul>
     </div>
 @endif
-@if(\Auth::user()->type == 'employee')
+
 <div class="row">
-    <div class="col-lg-4 col-md-6">
+    @if (\Auth::user()->type == 'employee')
+    <div class="col-lg-3 col-md-6">
         <div class="card">
             <div class="card-body p-3">
                 <div class="d-flex align-items-center justify-content-between">
@@ -58,9 +59,15 @@
                             <h5 class="mb-0">Allowed Leave</h5>
                             <div>
                                 @foreach($leaveTypesAll as $type)
-                                    <p class="text-muted text-sm mb-0">
-                                        Total {{ $type->title }} : {{ $type->days }}
-                                    </p>
+                                    @if($type->code != 'WFH' && $type->code != 'CLO')
+                                        <p class="text-muted text-sm mb-0">
+                                            Total {{ $type->title }}
+                                            @if($type->code == 'EL')
+                                                <b>(Limit: 1 Per Month)</b>
+                                            @endif
+                                            : {{ $type->allowed_leave }}
+                                        </p>
+                                    @endif
                                 @endforeach
                             </div>
                         </div>
@@ -69,14 +76,16 @@
             </div>
         </div>
     </div>
+    @endif
 
     @php
         // Simulate the same leaveCounts structure
         // $leaveCounts = [leave_type_id => ['Approved' => x, 'Rejected' => y, 'Pending' => z]];
         // $leaveTypes = [leave_type_id => 'Leave Type Name'];
+        $colClass = (\Auth::user()->type == 'employee') ? 'col-lg-3 col-md-6' : 'col-lg-4 col-md-6';
     @endphp
     {{-- Approved --}}
-    <div class="col-lg-4 col-md-6">
+    <div class="{{ $colClass }}">
         <div class="card stats-wrapper dash-info-card">
             <div class="card-body p-3">
                 <div class="d-flex align-items-center justify-content-between">
@@ -88,10 +97,12 @@
                             <h5 class="mb-0">Approved Leave</h5>
                             <div>
                                 @foreach ($leaveCounts as $leaveTypeId => $statuses)
+                                    @if(  $leaveTypes[$leaveTypeId] != 'Coming Late Office' && $leaveTypes[$leaveTypeId] != 'Early Leave')
                                     <p class="text-muted text-sm mb-0">
                                         Total {{ $leaveTypes[$leaveTypeId] ?? 'Unknown' }} :
                                         {{ $statuses['Approved'] ?? 0 }}
                                     </p>
+                                    @endif
                                 @endforeach
                             </div>
                         </div>
@@ -102,7 +113,7 @@
     </div>
 
     {{-- Rejected --}}
-    <div class="col-lg-4 col-md-6">
+    <div class="{{ $colClass }}">
         <div class="card stats-wrapper dash-info-card">
             <div class="card-body p-3">
                 <div class="d-flex align-items-center justify-content-between">
@@ -114,10 +125,12 @@
                             <h5 class="mb-0">Rejected Leave</h5>
                             <div>
                                 @foreach ($leaveCounts as $leaveTypeId => $statuses)
-                                    <p class="text-muted text-sm mb-0">
-                                        Total {{ $leaveTypes[$leaveTypeId] ?? 'Unknown' }} :
-                                        {{ $statuses['Rejected'] ?? 0 }}
-                                    </p>
+                                    @if(  $leaveTypes[$leaveTypeId] != 'Coming Late Office' && $leaveTypes[$leaveTypeId] != 'Early Leave')
+                                        <p class="text-muted text-sm mb-0">
+                                            Total {{ $leaveTypes[$leaveTypeId] ?? 'Unknown' }} :
+                                            {{ $statuses['Reject'] ?? 0 }}
+                                        </p>
+                                    @endif
                                 @endforeach
                             </div>
                         </div>
@@ -128,7 +141,7 @@
     </div>
 
     {{-- Pending --}}
-    <!-- <div class="col-lg-4 col-md-6">
+    <div class="{{ $colClass }}">
         <div class="card stats-wrapper dash-info-card">
             <div class="card-body p-3">
                 <div class="d-flex align-items-center justify-content-between">
@@ -140,10 +153,12 @@
                             <h5 class="mb-0">Pending Leave</h5>
                             <div>
                                 @foreach ($leaveCounts as $leaveTypeId => $statuses)
-                                    <p class="text-muted text-sm mb-0">
-                                        Total {{ $leaveTypes[$leaveTypeId] ?? 'Unknown' }} :
-                                        {{ $statuses['Pending'] ?? 0 }}
-                                    </p>
+                                    @if($leaveTypes[$leaveTypeId] != 'Coming Late Office' && $leaveTypes[$leaveTypeId] != 'Early Leave')
+                                        <p class="text-muted text-sm mb-0">
+                                            Total {{ $leaveTypes[$leaveTypeId] ?? 'Unknown' }} :
+                                            {{ $statuses['Pending'] ?? 0 }}
+                                        </p>
+                                    @endif
                                 @endforeach
                             </div>
                         </div>
@@ -151,9 +166,9 @@
                 </div>
             </div>
         </div>
-    </div> -->
+    </div>
 </div>
-@endif
+
 <div class="row">
 
     {{ Form::open(['route' => ['leave.index'], 'method' => 'get', 'id' => 'leave_form']) }}
@@ -198,6 +213,7 @@
                     <table class="table" id="pc-dt-simple">
                         <thead>
                             <tr>
+                                <th>{{ __('LeaveId') }}</th>
                                 @if (\Auth::user()->type != 'employee')
                                     <th>{{ __('Employee') }}</th>
                                 @endif
@@ -213,7 +229,11 @@
                         </thead>
                         <tbody>
                             @foreach ($leaves as $leave)
+                                @php
+                                    $count = DB::table('leave_managers')->where('leave_id', $leave->id)->count();
+                                @endphp
                                 <tr>
+                                    <td>{{ Get_LeaveId($leave->id) }}</td>
                                     @if (\Auth::user()->type != 'employee')
                                         <td>{{ !empty($leave->employee_id) ? $leave->employees->name : '' }}
                                         </td>
@@ -229,16 +249,7 @@
                                         @endif
                                         <br />
 
-                                        @switch($leave->half_day_type)
-                                            @case('morning')
-                                                <div class="badge bg-dark">{{ __('1st H/D (Morning)') }}</div>
-                                                @break
-                                            @case('afternoon')
-                                                <div class="badge bg-danger">{{ __('2nd H/D (Afternoon)') }}</div>
-                                                @break
-                                            @default
-                                                <div></div>
-                                        @endswitch
+                                        <?php echo indexHalfLabel($leave); ?>
                                     </td>
                                     <td>
                                         @if($leave->start_date == $leave->end_date)
@@ -253,31 +264,7 @@
                                     <td>{{ $leave->total_leave_days }}</td>
                                     <td style="white-space: normal; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word;width: 300px;">{{ $leave->leave_reason }}</td>
                                     <td>
-                                        @if ($leave->status == 'Pending')
-                                            <div class="badge bg-warning p-2 px-3 ">{{ $leave->status }}</div>
-                                        @elseif ($leave->status == 'In_Process')
-                                            <div class="badge p-2 px-3" style="background:#9D00FF;">In-Process</div>
-                                        @elseif ($leave->status == 'Manager_Approved')
-                                            <div class="badge p-2 px-3" style="background:#004000;">Manager-Approved</div>
-                                        @elseif ($leave->status == 'Manager_Rejected')
-                                            <div class="badge p-2 px-3" style="background:#800040;">Manager-Rejected</div>
-                                        @elseif ($leave->status == 'Partially_Approved')
-                                            <div class="badge p-2 px-3" style="background:#9ACD32;">Partially-Approved</div>
-                                        <!-- @elseif (in_array($leave->status, ['In_Process', 'Manager_Approved','Partially_Approved']) && \Auth::user()->type === 'employee')
-                                            <div class="badge p-2 px-3" style="background:#FA5F55;">In-Process</div> -->
-                                        @elseif($leave->status == 'Approved')
-                                            <div class="badge bg-success p-2 px-3 ">{{ $leave->status }}</div>
-                                        @elseif($leave->status == "Reject")
-                                            <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
-                                        @elseif($leave->status == "Draft")
-                                            <div class="badge bg-info p-2 px-3 ">{{ $leave->status }}</div>
-                                        @elseif($leave->status == "Cancelled")
-                                            <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
-                                        @elseif($leave->status == 'Pre-Approved')
-                                            <div class="text-success"><b>{{ $leave->status }}</b></div>
-                                        @endif
-
-
+                                        {!! leaveStatusBadge($leave) !!}
                                     </td>
                                     <td>{{ \Carbon\Carbon::parse($leave->applied_on)->format('d/m/Y') }}</td>
 
@@ -398,6 +385,8 @@
         $(document).on('change', '#employee_id', function() {
             var employee_id = $(this).val();
 
+            var wfhExists = false;
+
             $.ajax({
                 url: '{{ route('leave.jsoncount') }}',
                 type: 'POST',
@@ -413,12 +402,17 @@
 
                     $.each(data, function(key, value) {
 
-                        if (value.total_leave == value.days && value.code != 'WFH' && value.code != 'EL' && value.code != 'LWP' && value.code != 'WKG') {
+                        // mark if WFH exists
+                        if (value.code === 'WFH') {
+                            wfhExists = true;
+                        }
+
+                        if (value.total_leave == value.days && value.code != 'WFH' && value.code != 'EL' && value.code != 'LWP' && value.code != 'WKG' && value.code != 'CLO') {
                             $('#leave_type_id').append('<option value="' + value.id +
                                 '" disabled>' + value.title + '&nbsp(' +value.code + ')' + '&nbsp(' + value.total_leave +
                                 '/' + value.days + ')</option>');
                         } else {
-                            if(value.code != 'WFH' && value.code != 'EL' && value.code != 'LWP' && value.code != 'WKG'){
+                            if(value.code != 'WFH' && value.code != 'EL' && value.code != 'LWP' && value.code != 'WKG' && value.code != 'CLO'){
                                 $('#leave_type_id').append('<option value="' + value.id + '">' +
                                 value.title + '&nbsp(' +value.code + ')' + '&nbsp(' + value.total_leave + '/' + value
                                 .days + ')</option>');
@@ -435,9 +429,34 @@
                         }
                     });
 
+                    // single-condition: if no WFH in the list, hide & disable hybrid half-day options
+                    var hybridA = 'leave_am_wfh_pm';
+                    var hybridB = 'wfh_am_leave_pm';
+
+
+                    if (!wfhExists) {
+                        $('#half_day_type option[value="' + hybridA + '"]').hide();
+                        $('#half_day_type option[value="' + hybridB + '"]').hide();
+
+                        // reset if one of the hybrids is currently selected
+                        var cur = $('#half_day_type').val();
+                        if (cur === hybridA || cur === hybridB) {
+                            $('#half_day_type').val('full_day');
+                        }
+
+                       
+                    } else {
+                        // ensure hybrids visible/enabled when WFH exists
+                        $('#half_day_type option[value="' + hybridA + '"]').show();
+                        $('#half_day_type option[value="' + hybridB + '"]').show();
+                    }
+
+                    $('#employee_wfh').val(wfhExists);
+
                 }
             });
         });
+
     </script>
 
 @endpush

@@ -15,16 +15,21 @@
         </div>
     @endif
 
+
     @if (\Auth::user()->type != 'employee')
         <div class="row">
             <div class="col-md-12">
                 <div class="form-group">
                     {{ Form::label('employee_id', __('Employee'), ['class' => 'col-form-label']) }}<x-required></x-required>
                     {{ Form::select('employee_id', $employees, null, ['class' => 'form-control select2', 'id' => 'employee_id', 'placeholder' => __('Select Employee')]) }}
+
                 </div>
             </div>
         </div>
+        <input type="hidden" value=false name="employee_wfh" id="employee_wfh" />
     @else
+        <input type="hidden" value={{ !empty($employees) ? $employees->work_from_home : false }} name="employee_wfh" id="employee_wfh" />
+        <input type="hidden" value={{ !empty($employees) ? $employees->id : 0 }} name="employee_id_hidden" id="employee_id_hidden" />
         {{-- @foreach ($employees as $employee) --}}
         {!! Form::hidden('employee_id', !empty($employees) ? $employees->id : 0, ['id' => 'employee_id']) !!}
         {{-- @endforeach --}}
@@ -36,7 +41,7 @@
                 <select name="leave_type_id" id="leave_type_id" class="form-control select" required>
                     <option value="">{{ __('Select Leave Type') }}</option>
                     @foreach ($leavetypes as $leave)
-                        <option value="{{ $leave->id }}">{{ $leave->title }} (<span class="float-right pr-5">
+                        <option value="{{ $leave->id }}" data-code="{{ $leave->code }}">{{ $leave->title }} (<span class="float-right pr-5">
                                 {{ $leave->days }}</span>)</option>
                     @endforeach
                 </select>
@@ -49,6 +54,8 @@
                     <option value="full_day">{{ __('Full Day') }}</option>
                     <option value="morning">{{ __('First Half (Morning)') }}</option>
                     <option value="afternoon">{{ __('Second Half (Afternoon)') }}</option>
+                    <option value="leave_am_wfh_pm">{{ __('Morning Leave / Afternoon WFH') }}</option>
+                    <option value="wfh_am_leave_pm">{{ __('Morning WFH / Afternoon Leave') }}</option>
                 </select>
             </div>
         </div>
@@ -63,11 +70,11 @@
                     <option value="4:00 PM">4:00 PM</option>
                     <option value="4:15 PM">4:15 PM</option>
                     <option value="4:30 PM">4:30 PM</option>
-                    <option value="4:30 PM">4:45 PM</option>
+                    <option value="4:45 PM">4:45 PM</option>
                     <option value="5:00 PM">5:00 PM</option>
-                    <option value="4:15 PM">5:15 PM</option>
-                    <option value="4:30 PM">5:30 PM</option>
-                    <option value="4:30 PM">5:45 PM</option>
+                    <option value="5:15 PM">5:15 PM</option>
+                    <option value="5:30 PM">5:30 PM</option>
+                    <option value="5:45 PM">5:45 PM</option>
                     <option value="6:00 PM">6:00 PM</option>
                 </select>
                 <span style="color:#ff3a6e;font-size: 11px;"><b>Note :</b>Only one Early Leave is allowed per month. Must complete 8 hours. Applying on Same day is restricted.</span>
@@ -118,13 +125,13 @@
         <div class="col-md-6">
             <div class="form-group">
                 {{ Form::label('start_date', __('Start Date'), ['class' => 'col-form-label']) }}
-                {{ Form::text('start_date', null, ['class' => 'form-control d_week current_date', 'autocomplete' => 'off', 'placeholder' => 'Select start date', 'id' => 'start_date']) }}
+                {{ Form::date('start_date', null, ['class' => 'form-control d_week current_date', 'required' => true, 'id' => 'start_date']) }}
             </div>
         </div>
         <div class="col-md-6">
             <div class="form-group">
                 {{ Form::label('end_date', __('End Date'), ['class' => 'col-form-label']) }}
-                {{ Form::text('end_date', null, ['class' => 'form-control d_week current_date', 'autocomplete' => 'off', 'placeholder' => 'Select end date', 'id' => 'end_date']) }}
+                {{ Form::date('end_date', null, ['class' => 'form-control d_week current_date', 'required' => true, 'id' => 'end_date']) }}
             </div>
         </div>
     </div>
@@ -175,7 +182,8 @@
         <input type="submit" value="{{ __('Create') }}" id="apply-btn"  class="btn  btn-primary">
     @else
         <input type="submit" value="{{ __('Apply') }}"  id="apply-btn" class="btn  btn-primary">
-        <button type="button" class="btn btn-danger" id="save-draft-btn">{{ __('Save as Draft') }}</button>
+        <input type="submit" value="{{ __('Save as Draft') }}"  id="save-draft-btn" class="btn  btn-danger">
+        <!-- <button type="button" class="btn btn-danger" id="save-draft-btn">{{ __('Save as Draft') }}</button> -->
     @endif
     
 </div>
@@ -189,7 +197,7 @@
         if (month < 10) month = "0" + month;
         if (day < 10) day = "0" + day;
         var today = now.getFullYear() + '-' + month + '-' + day;
-        $('.current_date').val(today);
+        // $('.current_date').val(today);
     });
 </script>
 
@@ -210,25 +218,38 @@
         $('#leave_type_id').on('change', function () {
             var selectedValue = $(this).val();
             
-            if (selectedValue == "3" || selectedValue == "4" || selectedValue == "5") {
+            if (selectedValue == "3" || selectedValue == "4" || selectedValue == "5" || selectedValue == "7") {
                 $('#half_day_type').val('full_day').prop('disabled', true);
             } else {
                 $('#half_day_type').prop('disabled', false);
             }
 
-            if(selectedValue == "4" || selectedValue == "5"){
+            if(selectedValue == "4" || selectedValue == "5" || selectedValue == "7"){
                 $('#start_date').val('');
                 $('#end_date').val('');
                 $('#end_date').prop('disabled', true);
             }else{
                 $('#end_date').prop('disabled', false);
             }
+
+            // single-condition: if no WFH in the list, hide & disable hybrid half-day options
+            var hybridA = 'leave_am_wfh_pm';
+            var hybridB = 'wfh_am_leave_pm';
+            var employee_wfh = $('#employee_wfh').val();
+
+            if(selectedValue == "2" && employee_wfh == "true"){
+                $('#half_day_type option[value="' + hybridA + '"]').show();
+                $('#half_day_type option[value="' + hybridB + '"]').show();
+            }else{
+                $('#half_day_type option[value="' + hybridA + '"]').hide();
+                $('#half_day_type option[value="' + hybridB + '"]').hide();
+            }
         });
 
         $('#start_date').on('blur', function () {
             var selectedValue = $('#leave_type_id').val();
             
-            if (selectedValue == "4" || selectedValue == "5") {
+            if (selectedValue == "4" || selectedValue == "5" || selectedValue == "7") {
                 var startDate = $(this).val();
                 $('#end_date').val(startDate);
             }
@@ -319,5 +340,8 @@
                 $('#half_day_type_div').css('display','block');
             }
         });
+
+
     });
+
 </script>

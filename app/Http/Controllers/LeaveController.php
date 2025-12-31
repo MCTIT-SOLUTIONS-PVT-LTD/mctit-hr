@@ -19,10 +19,238 @@ use App\Models\LeaveManager;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
+use App\Services\UltraMsgService;
+use Illuminate\Support\Facades\DB;
 
 class LeaveController extends Controller
 {
+
     public function index()
+    {
+
+        if (!\Auth::user()->can('Manage Leave')) {
+            return redirect()->back()->with('error', __('Permission denied.'));
+        }
+
+        $leaveCounts = [];
+        $leaveTypes = [];
+        $leaveTypesAll = [];
+
+        // Financial year setup
+        $financialYears = FinancialYear::pluck('year_range', 'id');
+        $activeYearId = FinancialYear::where('is_active', 1)->value('id');
+        $selectedFinancialYearId = request('financial_year_id', $activeYearId);
+        $selectedEmployeeId = request('employee_id');
+        $financialYear = FinancialYear::findOrFail($selectedFinancialYearId);
+
+        // Employee & manager lists
+        $creatorId = \Auth::user()->creatorId();
+        $employeeList = Employee::where('created_by', $creatorId)
+            ->orderBy('name', 'asc')
+            ->pluck('name', 'id');
+
+        $managerList = Employee::where('created_by', $creatorId)
+            ->where('is_manager', true)
+            ->orderBy('name', 'asc')
+            ->pluck('name', 'id');
+
+        // Role-specific logic
+        if (\Auth::user()->type == 'employee') {
+            $employee = Employee::where('user_id', \Auth::id())->firstOrFail();
+            $leaves = $this->getLeavesForEmployee($employee->id, $financialYear);
+            $leaveTypes = $this->getLeaveTypes(['SL', 'CL', 'WFH', 'OH', 'EL']);
+        } else {
+            $leaves = $this->getLeavesForAdmin($financialYear, $selectedEmployeeId);
+            $leaveTypes = $this->getLeaveTypes(['SL', 'CL', 'WFH', 'OH', 'EL', 'LWP']);
+        }
+
+        // Initialize leave counts
+        foreach ($leaveTypes as $id => $title) {
+            $leaveCounts[$id] = ['Approved' => 0, 'Reject' => 0, 'Pending' => 0,];
+        }
+
+        // For counts
+        $LeavesList = LocalLeave::where('created_by', \Auth::user()->creatorId());
+
+        if (\Auth::user()->type == 'employee') {
+            $employee = Employee::where('user_id', \Auth::id())->firstOrFail();
+            $LeavesList->where('employee_id', $employee->id);
+        }
+
+        if ($selectedEmployeeId && \Auth::user()->type != 'employee') {
+            $LeavesList->where('employee_id', $selectedEmployeeId);
+        }
+
+        $LeavesList = $LeavesList->get();
+
+        // Calculate counts
+        foreach ($LeavesList as $LeaveDetails) {
+            $status = $LeaveDetails->status;
+
+            // Treat Manager_Rejected as Pending
+            if ($status === 'In_Process' || $status === 'Manager_Approved') {
+                $status = 'Pending';
+            }
+
+            // Treat Manager_Rejected as Rejected
+            if ($status === 'Manager_Rejected') {
+                $status = 'Reject';
+            }
+
+            // For EL leave type, treat Pre-Approved as Approved
+            $leaveType = LeaveType::find($LeaveDetails->leave_type_id);
+            if ($leaveType && ($leaveType->code === 'EL' || $leaveType->code === 'OH') && $status === 'Pre-Approved') {
+                $status = 'Approved';
+            }
+
+            $days = $this->getTotalLeaveDays($LeaveDetails->start_date,$LeaveDetails->end_date,$LeaveDetails->leave_type_id,$LeaveDetails->half_day_type);
+
+            if (isset($leaveCounts[$LeaveDetails->leave_type_id][$status])) {
+                $leaveCounts[$LeaveDetails->leave_type_id][$status] += $days;
+            }
+        }
+
+        $typeIds    = $leaveTypes->keys()->all();
+
+        // --- Active financial year (fallback to utility) ---
+        $fy      = DB::table('financial_years')->where('is_active', 1)->first();
+        $fyStart = Carbon::parse($fy->start_date ?? Utility::AnnualLeaveCycle()['start_date'])->startOfMonth();
+        $fyEnd   = Carbon::parse($fy->end_date   ?? Utility::AnnualLeaveCycle()['end_date'])->endOfMonth();
+
+        // --- Employee DOJ (from auth user) ---
+        $employee = auth()->user()->employee ?? null;
+
+        $monthsWorked = 0;
+        if ($employee && $employee->company_doj) {
+            $join = Carbon::parse($employee->company_doj)->startOfMonth();
+
+            if ($join->lt($fyStart)) {
+                // Joined before FY start → full FY
+                $monthsWorked = 12; // usually 12
+            } elseif ($join->gt($fyEnd)) {
+                // Joined after FY end → 0
+                $monthsWorked = 0;
+            } else {
+                // Joined within FY → prorated
+                $monthsWorked = round($join->diffInMonths($fyEnd)); // inclusive
+            }
+        } else {
+            // No DOJ → full FY
+            $monthsWorked = 12;
+        }
+
+        // --- Fetch leave types and compute prorated allowed leave ---
+        $leaveTypesAll = LeaveType::whereIn('id', $typeIds)
+            ->get()
+            ->map(function ($type) use ($monthsWorked) {
+                $days = (float) ($type->days ?? 0);
+
+                $perMonth = $days / 12; // entitlement per month
+                $type->allowed_leave = roundToHalf($perMonth * $monthsWorked);
+                $type->monthsWorked  = $monthsWorked; // debug
+                $type->perMonth      = $perMonth;     // debug
+
+                return $type;
+            })
+            ->keyBy('id');
+
+        // Ensure leave days are calculated
+        foreach ($leaves as $leave) {
+            if ($leave->total_leave_days == 0) {
+                $leave->total_leave_days = $this->calculateLeaveDays($leave, $financialYear);
+            }
+        }
+
+        return view('leave.index', compact(
+            'leaves',
+            'leaveCounts',
+            'leaveTypes',
+            'leaveTypesAll',
+            'financialYears',
+            'activeYearId',
+            'selectedFinancialYearId',
+            'selectedEmployeeId',
+            'employeeList',
+            'managerList'
+        ));
+    }
+
+    /**
+     * Get leaves for a specific employee.
+     */
+    private function getLeavesForEmployee($employeeId, $financialYear)
+    {
+        return LocalLeave::where('employee_id', $employeeId)
+            ->where(function ($query) use ($financialYear) {
+                $query->whereBetween('start_date', [$financialYear->start_date, $financialYear->end_date])
+                      ->orWhereBetween('end_date', [$financialYear->start_date, $financialYear->end_date]);
+            })
+            ->orderBy('applied_on', 'desc')
+            ->get();
+    }
+
+    /**
+     * Get leaves for admin/manager.
+     */
+    private function getLeavesForAdmin($financialYear, $selectedEmployeeId = null)
+    {
+        $query = LocalLeave::where('created_by', \Auth::user()->creatorId())
+            ->where('status', '!=', 'Draft')
+            ->where(function ($query) use ($financialYear) {
+                $query->whereBetween('start_date', [$financialYear->start_date, $financialYear->end_date])
+                      ->orWhereBetween('end_date', [$financialYear->start_date, $financialYear->end_date]);
+            });
+
+        if ($selectedEmployeeId) {
+            $query->where('employee_id', $selectedEmployeeId);
+        }
+
+        return $query->with(['employees', 'leaveType'])
+            ->orderByRaw("FIELD(status, 'Pending', 'Manager_Approved') DESC,start_date DESC")
+            //  ->orderByRaw("FIELD(status, 'Pending', 'Manager_Approved') DESC")
+            //  ->orderBy('applied_on', 'desc')
+            //  ->orderBy('start_date', 'desc')
+            ->get();
+    }
+
+    /**
+     * Get leave types by codes.
+     */
+    private function getLeaveTypes(array $codes)
+    {
+        return LeaveType::where(function ($query) use ($codes) {
+            foreach ($codes as $code) {
+                $query->orWhere('code', 'like', "%$code%");
+            }
+        })->pluck('title', 'id');
+    }
+
+    /**
+     * Calculate leave days excluding weekends.
+     */
+    private function calculateLeaveDays($leave, $financialYear)
+    {
+        $start = \Carbon\Carbon::parse($leave->start_date);
+        $end = \Carbon\Carbon::parse($leave->end_date);
+        $days = 0;
+        if($leave->half_day_type = 5){
+            return $days;
+        }
+
+        if($leave->half_day_type = 7){
+            return $days;
+        }
+
+        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+            if (in_array($date->dayOfWeek, [\Carbon\Carbon::SATURDAY, \Carbon\Carbon::SUNDAY])) continue;
+            if ($date->between($financialYear->start_date, $financialYear->end_date)) {
+                $days += ($leave->half_day_type != 'full_day') ? 0.5 : 1;
+            }
+        }
+
+        return $days;
+    }
+    public function indexOld()
     {
         $leaveCounts = [];
         $leaveTypes = [];
@@ -89,7 +317,7 @@ class LeaveController extends Controller
                         if (in_array($date->dayOfWeek, [\Carbon\Carbon::SATURDAY, \Carbon\Carbon::SUNDAY])) continue;
 
                         if ($date->between(\Carbon\Carbon::parse($financialYear->start_date), \Carbon\Carbon::parse($financialYear->end_date))) {
-                            $days += ($start->equalTo($end) && $halfDayType != 'full_day') ? 0.5 : 1;
+                            $days += ($halfDayType != 'full_day') ? 0.5 : 1;
                         }
                     }
 
@@ -103,6 +331,59 @@ class LeaveController extends Controller
                     $query->where('code', 'like', '%SL%')->orWhere('code', 'like', '%CL%');
                 })->get()->keyBy('id');
             } else {
+
+                $leaves = LocalLeave::where(function ($query) use ($financialYear) {
+                        $query->whereBetween('start_date', [$financialYear->start_date, $financialYear->end_date])
+                              ->orWhereBetween('end_date', [$financialYear->start_date, $financialYear->end_date]);
+                    })
+                    ->orderBy('applied_on', 'desc')
+                    ->get();
+
+                    // echo "<pre>";print_r($leaves);exit;
+
+                $leaveTypes = LeaveType::where(function ($query) {
+                    $query->where('code', 'like', '%SL%')->orWhere('code', 'like', '%CL%')->orWhere('code', 'like', '%WFH%');
+                })->pluck('title', 'id','code');
+
+                foreach ($leaveTypes as $id => $title) {
+                    $leaveCounts[$id] = [
+                        'Approved' => 0,
+                        'Rejected' => 0,
+                        'Pending' => 0,
+                    ];
+                }
+
+                $LeavesList = LocalLeave::get();
+
+                foreach ($LeavesList as $LeaveDetails) {
+                    $leaveTypeId = $LeaveDetails->leave_type_id;
+                    $status = $LeaveDetails->status;
+                    $start = \Carbon\Carbon::parse($LeaveDetails->start_date);
+                    $end = \Carbon\Carbon::parse($LeaveDetails->end_date);
+                    $halfDayType = $LeaveDetails->half_day_type;
+                    $days = 0;
+
+                    for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+                        if (in_array($date->dayOfWeek, [\Carbon\Carbon::SATURDAY, \Carbon\Carbon::SUNDAY])) continue;
+
+                        if ($date->between(\Carbon\Carbon::parse($financialYear->start_date), \Carbon\Carbon::parse($financialYear->end_date))) {
+                            $days += ($halfDayType != 'full_day') ? 0.5 : 1;
+                        }
+                    }
+
+                    if (isset($leaveCounts[$leaveTypeId][$status])) {
+                        $leaveCounts[$leaveTypeId][$status] += $days;
+                    }
+                }
+
+                $leaveTypes = LeaveType::pluck('title', 'id','code');
+                $leaveTypesAll = LeaveType::where(function ($query) {
+                    $query->where('code', 'like', '%SL%')->orWhere('code', 'like', '%CL%')->orWhere('code', 'like', '%WFH%');
+                })->get()->keyBy('id');
+
+
+
+
                 // Admin / CEO / Manager
                 $leavesQuery = LocalLeave::where('created_by', \Auth::user()->creatorId())
                     ->where('status', '!=', 'Draft')
@@ -123,7 +404,7 @@ class LeaveController extends Controller
 
             foreach ($leaves as $leave) {
                 if ($leave->total_leave_days == 0) {
-                    $leave->total_leave_days = $this->getTotalLeaveDays(
+                    $leave->total_leave_days = getTotalLeaveDays(
                         $leave->start_date,
                         $leave->end_date,
                         $leave->leave_type_id,
@@ -149,7 +430,6 @@ class LeaveController extends Controller
         }
     }
 
-
     // Private function to calculate leave days excluding weekends
     private function getTotalLeaveDays($startDate, $endDate,$leave_type_id,$half_day_type)
     {
@@ -158,7 +438,7 @@ class LeaveController extends Controller
 
         $totalLeaveDays = 0;
 
-        if($leave_type_id != 5){
+        if($leave_type_id != 5 && $leave_type_id != 7){
             // Fetch all holidays in the date range
             $holidays = \App\Models\Holiday::where('is_optional', 0)
                         ->pluck('start_date')
@@ -187,15 +467,19 @@ class LeaveController extends Controller
 
     public function create()
     {
+
         if (\Auth::user()->can('Create Leave')) {
             if (Auth::user()->type == 'employee') {
                 $employees = Employee::where('user_id', '=', \Auth::user()->id)->first();
             } else {
-                $employees = Employee::where('created_by', '=', \Auth::user()->creatorId())->get()->pluck('name', 'id');
+                $employees = Employee::where('created_by', '=', \Auth::user()->creatorId())->orderBy('name', 'asc')->get()->pluck('name', 'id');
             }
 
             $employeesList = Employee::where('user_id', '!=', \Auth::user()->id)->first();
-            $leavetypes      = LeaveType::where('created_by', '=', \Auth::user()->creatorId())->get();
+
+            $leavetypes = LeaveType::where('created_by', '=', \Auth::user()->creatorId())->get();
+            
+
             $leavetypes_days = LeaveType::where('created_by', '=', \Auth::user()->creatorId())->get();
 
             $managerList = Employee::where('created_by', \Auth::user()->creatorId())
@@ -312,9 +596,29 @@ class LeaveController extends Controller
         }
     }
 
-    public function store(Request $request)
+    public function store(Request $request, UltraMsgService $whatsapp)
     {
-        $setings = Utility::settings();
+        $settings = Utility::settings();
+
+        $employee = Employee::find($request->employee_id);
+
+        // Get active financial year
+        $financialYear = \DB::table('financial_years')
+            ->where('is_active', 1)
+            ->first();
+
+        $startDate = $financialYear->start_date ?? Utility::AnnualLeaveCycle()['start_date'];
+        $endDate   = $financialYear->end_date ?? Utility::AnnualLeaveCycle()['end_date'];
+
+        // Calculate months of service in the financial year
+        $joinDate = \Carbon\Carbon::parse($employee->company_doj);
+
+        // If joined before FY start, start from FY start
+        if ($joinDate->lt(\Carbon\Carbon::parse($startDate))) {
+            $joinDate = \Carbon\Carbon::parse($startDate);
+        }
+
+        $monthsWorked = $joinDate->diffInMonths(\Carbon\Carbon::parse($endDate)) + 1;
 
         if (\Auth::user()->can('Create Leave')) {
             if ($request->leave_type_id == 5) {
@@ -326,7 +630,7 @@ class LeaveController extends Controller
                         'start_date' => 'required',
                         'end_date' => 'required',
                         'leave_reason' => 'required',
-                        'half_day_type' => 'nullable|in:full_day,morning,afternoon', 
+                        'half_day_type' => 'nullable|in:full_day,morning,afternoon,leave_am_wfh_pm,wfh_am_leave_pm', 
                         'cc_email_id' => 'required|array',
                         'cc_email_id.*' => 'exists:employees,id',
                         // 'managers' => 'array',
@@ -343,7 +647,7 @@ class LeaveController extends Controller
                         'start_date' => 'required',
                         'end_date' => 'required',
                         'leave_reason' => 'required',
-                        'half_day_type' => 'nullable|in:full_day,morning,afternoon', 
+                        'half_day_type' => 'nullable|in:full_day,morning,afternoon,leave_am_wfh_pm,wfh_am_leave_pm', 
                         'cc_email_id' => 'required|array',
                         'cc_email_id.*' => 'exists:employees,id',
                         //'managers' => 'array',
@@ -366,7 +670,7 @@ class LeaveController extends Controller
                 $startDate = \Carbon\Carbon::parse($request->start_date)->toDateString();
                 $today = \Carbon\Carbon::today()->toDateString();
 
-                if ($startDate == $today) {
+                if ($startDate == $today && \Auth::user()->type == 'employee') {
                     return redirect()->back()->with('error', __('You cannot apply for Early Leave on the same day.'));
                 }
 
@@ -428,7 +732,7 @@ class LeaveController extends Controller
 
             // Calculate total leave days excluding weekends (Saturday and Sunday)
             
-            $total_leave_days = $this->getTotalLeaveDays($request->start_date, $request->end_date,$request->leave_type_id,$request->half_day_type);
+            $total_leave_days = getTotalLeaveDays($request->start_date, $request->end_date,$request->leave_type_id,$request->half_day_type);
 
             $date = Utility::AnnualLeaveCycle();
 
@@ -474,7 +778,11 @@ class LeaveController extends Controller
                     ->sum('total_leave_days');
             }
 
-            $return = $leave_type->days - $leaves_used;
+
+
+            $allowed_leave = round(($leave_type->days / 12) * $monthsWorked);
+
+            $return = $allowed_leave - $leaves_used;
 
             if ($total_leave_days > $return) {
                 return redirect()->back()->with('error', __('You are not eligible for leave.'));
@@ -484,7 +792,7 @@ class LeaveController extends Controller
                 return redirect()->back()->with('error', __('Multiple leave entries are pending.'));
             }
 
-            if ($leave_type->days >= $total_leave_days) {
+            if ($allowed_leave >= $total_leave_days) {
                 $leave = new LocalLeave();
                 if (\Auth::user()->type == "employee") {
                     $leave->employee_id = $request->employee_id;
@@ -511,7 +819,7 @@ class LeaveController extends Controller
                 if ($request->status == 'draft') {
                     $leave->status = 'Draft';  // Set status to 'Draft' if the save as draft button is clicked
                 } else {
-                    if($request->leave_type_id == 5){
+                    if($request->leave_type_id == 4 || $request->leave_type_id == 5 || $request->leave_type_id == 7){
                         $leave->status = 'Pre-Approved'; // Default status if not a draft
                     }else{
                         if(empty($defaultManagerList)){
@@ -527,6 +835,16 @@ class LeaveController extends Controller
                 $leave->cc_email = $cc_email_id;
                 $leave->early_time = $request->leave_time;
                 $leave->save();
+
+                if($leave){
+                    /* Call createLeaveDaysFromLeaveId Function and update Start */
+                        $total_leave_days =createLeaveDaysFromLeaveId($leave->id);
+                        // Update the Leave record
+                        // $leave->total_leave_days = $total_leave_days;
+                        // $leave->save();
+                    /* Call createLeaveDaysFromLeaveId Function and update End */
+                }
+                
 
 
 
@@ -577,7 +895,21 @@ class LeaveController extends Controller
                         
                     }
 
-                    if($setings['is_email_trigger'] === 'on'){
+                    if($settings['is_whatsApp_Msg_trigger'] === 'on'){
+                        $leaveId = Get_LeaveId($leave->id);
+                        $employeeName = $employee->name;
+                        $leaveType = $leavetype->title;
+                        $leaveDateTo = $leaveDate;
+                        $leaveReason = $leave->leave_reason;
+                        $leave_status = GetStatusName($leave->status,$leave->approved_type);
+                        $employeePhone = $employee->phone;
+                        $leaveTypeId = $leave->leave_type_id;
+                        $leaveTime = $leave->early_time;
+                        
+                        $whatsapp->sendLeaveRequest($leaveId, $employeeName, $leaveTypeId, $leaveType, $leaveTime, $leaveDateTo, $leaveReason, $leave_status, $employeePhone);
+                    }
+
+                    if($settings['is_email_trigger'] === 'on'){
 
                         $GetManagers = LeaveManager::where('leave_id', $leave->id)->pluck('manager_id')->toArray();
                         $managers = $GetManagers;
@@ -586,13 +918,13 @@ class LeaveController extends Controller
 
                         $emails = Employee::whereIn('id', $leave->cc_email)->pluck('email')->toArray();
 
-                        $emails[] = $setings['CFO_EMAIL'];
+                        $emails[] = $settings['CFO_EMAIL'];
                         $emails[] = $employee->email;
 
                         
 
                         if ($leave->leave_type_id == 5 || empty($managers)) {
-                            $AllManagersEmails = $setings['DIRECTOR_EMAIL'];
+                            $AllManagersEmails = $settings['DIRECTOR_EMAIL'];
                             foreach ($ManagersEmails as $Email) {
                                 $emails[] = $Email;
                             }
@@ -633,6 +965,30 @@ class LeaveController extends Controller
                                         ->replyTo($data["replyTo"], $data["replyToName"])
                                         ->cc($emails);
                             });
+                        }else if ($leave->leave_type_id == 7) {
+                            Mail::send('email.leave-request-coming-late', $data, function ($message) use ($data,$emails) {
+                                // Convert properly from d/m/Y
+                                $date = Carbon::createFromFormat('d/m/Y', $data["leaveDate"]);
+
+                                $today = Carbon::today();
+                                $tomorrow = Carbon::tomorrow();
+
+                                if ($date->isSameDay($today)) {
+                                    $dateText = 'today';
+                                } elseif ($date->isSameDay($tomorrow)) {
+                                    $dateText = 'tomorrow';
+                                } else {
+                                    $dateText = $date->format('d/m/Y'); // → 03 Oct 2025
+                                }
+
+                                $subjectTxt = $data['leaveType']." on ".$dateText;
+
+                                $message->to($data["toEmail"])
+                                        ->subject($subjectTxt)
+                                        ->from($data["fromEmail"], $data["fromNameEmail"])
+                                        ->replyTo($data["replyTo"], $data["replyToName"])
+                                        ->cc($emails);
+                            });
                         }else{
 
                             if(empty($managers)){
@@ -654,10 +1010,10 @@ class LeaveController extends Controller
                     
                 }
 
-
+                // echo "<pre>";print_r($leave);exit;
                 return redirect()->route('leave.index')->with('success', __('Leave successfully created.'));
             } else {
-                return redirect()->back()->with('error', __('Leave type ' . $leave_type->name . ' allows a maximum of ' . $leave_type->days . ' days. Please ensure your selected days are under ' . $leave_type->days . ' days.'));
+                return redirect()->back()->with('error', __('Leave type ' . $leave_type->name . ' allows a maximum of ' . $allowed_leave . ' days. Please ensure your selected days are under ' . $leave_type->days . ' days.'));
             }
         } else {
             return redirect()->back()->with('error', __('Permission denied.'));
@@ -687,12 +1043,14 @@ class LeaveController extends Controller
                 if (Auth::user()->type == 'employee') {
                     $employees = Employee::where('employee_id', '=', \Auth::user()->creatorId())->first();;
                 } else {
-                    $employees = Employee::where('created_by', '=', \Auth::user()->creatorId())->get()->pluck('name', 'id');
+                    $employees = Employee::where('created_by', '=', \Auth::user()->creatorId())->orderBy('name', 'asc')->get()->pluck('name', 'id');
                 }
 
                 // $employees  = Employee::where('created_by', '=', \Auth::user()->creatorId())->get()->pluck('name', 'id');
                 // $leavetypes = LeaveType::where('created_by', '=', \Auth::user()->creatorId())->get()->pluck('title', 'id');
-                $leavetypes      = LeaveType::where('created_by', '=', \Auth::user()->creatorId())->get();
+                
+                // $leavetypes      = LeaveType::where('created_by', '=', \Auth::user()->creatorId())->get();
+                $leavetypes = LeaveType::where('created_by', '=', \Auth::user()->creatorId())->get();
 
                 // echo "<pre>";print_r($leave);exit;
 
@@ -720,9 +1078,30 @@ class LeaveController extends Controller
         }
     }
 
-    public function update(Request $request, $leave)
+    public function update(Request $request, UltraMsgService $whatsapp, $leave)
     {
-        $setings = Utility::settings();
+        $settings = Utility::settings();
+
+
+        $employee = Employee::find($request->employee_id);
+
+        // Get active financial year
+        $financialYear = \DB::table('financial_years')
+            ->where('is_active', 1)
+            ->first();
+
+        $startDate = $financialYear->start_date ?? Utility::AnnualLeaveCycle()['start_date'];
+        $endDate   = $financialYear->end_date ?? Utility::AnnualLeaveCycle()['end_date'];
+
+        // Calculate months of service in the financial year
+        $joinDate = \Carbon\Carbon::parse($employee->company_doj);
+
+        // If joined before FY start, start from FY start
+        if ($joinDate->lt(\Carbon\Carbon::parse($startDate))) {
+            $joinDate = \Carbon\Carbon::parse($startDate);
+        }
+
+        $monthsWorked = $joinDate->diffInMonths(\Carbon\Carbon::parse($endDate)) + 1;
         
         $leave = LocalLeave::find($leave);
         if (\Auth::user()->can('Edit Leave') || 
@@ -737,7 +1116,7 @@ class LeaveController extends Controller
                             'start_date' => 'required',
                             'end_date' => 'required',
                             'leave_reason' => 'required',
-                            'half_day_type' => 'nullable|in:full_day,morning,afternoon', // Validate half_day_type
+                            'half_day_type' => 'nullable|in:full_day,morning,afternoon,leave_am_wfh_pm,wfh_am_leave_pm', // Validate half_day_type
                             'cc_email_id' => 'nullable|array', // Allow cc_email_id as an array of IDs
                             'cc_email_id.*' => 'exists:employees,id', // Ensure each value is a valid employee ID
                             'leave_time' => 'required',
@@ -754,7 +1133,7 @@ class LeaveController extends Controller
                             'start_date' => 'required',
                             'end_date' => 'required',
                             'leave_reason' => 'required',
-                            'half_day_type' => 'nullable|in:full_day,morning,afternoon', // Validate half_day_type
+                            'half_day_type' => 'nullable|in:full_day,morning,afternoon,leave_am_wfh_pm,wfh_am_leave_pm', // Validate half_day_type
                             'cc_email_id' => 'nullable|array', // Allow cc_email_id as an array of IDs
                             'cc_email_id.*' => 'exists:employees,id', // Ensure each value is a valid employee ID
                             //'managers' => 'array',
@@ -778,7 +1157,7 @@ class LeaveController extends Controller
                     $startDate = \Carbon\Carbon::parse($request->start_date)->toDateString();
                     $today = \Carbon\Carbon::today()->toDateString();
 
-                    if ($startDate == $today) {
+                    if ($startDate == $today && \Auth::user()->type != 'employee') {
                         return redirect()->back()->with('error', __('You cannot apply for Early Leave on the same day.'));
                     }
 
@@ -833,7 +1212,7 @@ class LeaveController extends Controller
                 $employee = Employee::where('employee_id', '=', $leave->employee_id)->first();
 
                 
-                $total_leave_days = $this->getTotalLeaveDays($request->start_date, $request->end_date,$request->leave_type_id,$request->half_day_type);
+                $total_leave_days = getTotalLeaveDays($request->start_date, $request->end_date,$request->leave_type_id,$request->half_day_type);
 
                 $date = Utility::AnnualLeaveCycle();
 
@@ -869,7 +1248,9 @@ class LeaveController extends Controller
                         ->sum('total_leave_days');
                 }
 
-                $return = $leave_type->days - $leaves_used;
+                $allowed_leave = round(($leave_type->days / 12) * $monthsWorked);
+
+                $return = $allowed_leave - $leaves_used;
 
                 if ($total_leave_days > $return) {
                     return redirect()->back()->with('error', __('You are not eligible for leave.'));
@@ -879,7 +1260,7 @@ class LeaveController extends Controller
                     return redirect()->back()->with('error', __('Multiple leave entries are pending.'));
                 }
 
-                if ($leave_type->days >= $total_leave_days) {
+                if ($allowed_leave >= $total_leave_days) {
 
                     /* Manager Find List START */
 
@@ -938,7 +1319,7 @@ class LeaveController extends Controller
                         $leave->status = 'Draft';  // Set status to 'Draft' if the save as draft button is clicked
                         $leave->save();
                     } else {
-                        if($request->leave_type_id == 5){
+                        if($request->leave_type_id == 4 || $request->leave_type_id == 5 || $request->leave_type_id == 7){
                             $leave->status = 'Pre-Approved'; // Default status if not a draft
                         }else{
 
@@ -973,7 +1354,22 @@ class LeaveController extends Controller
 
                         $leavetype = LeaveType::find($leave->leave_type_id);
 
-                        if($setings['is_email_trigger'] === 'on'){
+
+                        if($settings['is_whatsApp_Msg_trigger'] === 'on'){
+                            $leaveId = Get_LeaveId($leave->id);
+                            $employeeName = $employee->name;
+                            $leaveType = $leavetype->title;
+                            $leaveDateTo = $leaveDate;
+                            $leaveReason = $leave->leave_reason;
+                            $leave_status = GetStatusName($leave->status,$leave->approved_type);
+                            $employeePhone = $employee->phone;
+                            $leaveTypeId = $leave->leave_type_id;
+                            $leaveTime = $leave->early_time;
+                            
+                            $whatsapp->sendLeaveRequest($leaveId, $employeeName, $leaveTypeId, $leaveType, $leaveTime, $leaveDateTo, $leaveReason, $leave_status, $employeePhone);
+                        }
+
+                        if($settings['is_email_trigger'] === 'on'){
 
                             $GetManagers = LeaveManager::where('leave_id', $leave->id)->pluck('manager_id')->toArray();
                             $managers = $GetManagers;
@@ -982,13 +1378,13 @@ class LeaveController extends Controller
 
                             $emails = Employee::whereIn('id', $leave->cc_email)->pluck('email')->toArray();
 
-                            $emails[] = $setings['CFO_EMAIL'];
+                            $emails[] = $settings['CFO_EMAIL'];
                             // $emails[] = $employee->email;
 
                             
 
                             if ($leave->leave_type_id == 5 || empty($managers)) {
-                                $AllManagersEmails = $setings['DIRECTOR_EMAIL'];
+                                $AllManagersEmails = $settings['DIRECTOR_EMAIL'];
                                 foreach ($ManagersEmails as $Email) {
                                     $emails[] = $Email;
                                 }
@@ -1020,7 +1416,7 @@ class LeaveController extends Controller
 
                             $emails = Employee::whereIn('id', $leave->cc_email)->pluck('email')->toArray();
 
-                            $emails[] = $setings['CFO_EMAIL'];
+                            $emails[] = $settings['CFO_EMAIL'];
                             // $emails[] = $employee->email;
 
                             if ($leave->leave_type_id == 5) {
@@ -1054,12 +1450,21 @@ class LeaveController extends Controller
 
                         /* **********************  Email Send  End ********************** */
                     }
+
+                    if($leave){
+                        /* Call createLeaveDaysFromLeaveId Function and update Start */
+                            $total_leave_days =createLeaveDaysFromLeaveId($leave->id);
+                            // Update the Leave record
+                            // $leave->total_leave_days = $total_leave_days;
+                            // $leave->save();
+                        /* Call createLeaveDaysFromLeaveId Function and update End */
+                    }
                    
                     
 
                     return redirect()->route('leave.index')->with('success', __('Leave successfully updated.'));
                 } else {
-                    return redirect()->back()->with('error', __('Leave type ' . $leave_type->name . ' is allowed for a maximum of ' . $leave_type->days . " days. Please make sure your selected days are under " . $leave_type->days . ' days.'));
+                    return redirect()->back()->with('error', __('Leave type ' . $leave_type->name . ' is allowed for a maximum of ' . $allowed_leave . " days. Please make sure your selected days are under " . $leave_type->days . ' days.'));
                 }
             } else {
                 return redirect()->back()->with('error', __('Permission denied.'));
@@ -1112,35 +1517,55 @@ class LeaveController extends Controller
                 return 'First Half (Morning)';
             case 'afternoon':
                 return 'Second Half (Afternoon)';
+            case 'leave_am_wfh_pm':
+                return 'Morning Leave / Afternoon WFH';
+            case 'wfh_am_leave_pm':
+                return 'Morning WFH / Afternoon Leave';
             default:
                 return 'Not Specified';  // Default if no matching type is found
         }
     }
 
-    public function changeaction(Request $request)
+    public function changeaction(Request $request, UltraMsgService $whatsapp)
     {
+        $LeaveStatus = $request->status;
+
+        if($LeaveStatus == 'Rejected'){
+            $LeaveStatus = 'Reject';
+        }
         $leave = LocalLeave::find($request->leave_id);
 
-        $leave->status = $request->status;
+        $leave->status = $LeaveStatus;
         $leave->remark = $request->remark;
-        if ($leave->status == 'Approved') {
-            $startDate = new \DateTime($leave->start_date);
-            $endDate = new \DateTime($leave->end_date);
-            $endDate->add(new \DateInterval('P1D'));  // Adjust end date to include the last day
-
-            // Calculate total leave days excluding Saturdays and Sundays
-            $total_leave_days = 0;
-            $currentDate = $startDate;
-
-            while ($currentDate < $endDate) {
-                if ($currentDate->format('N') < 6) { // Exclude Saturday (6) and Sunday (7)
-                    $total_leave_days++;
-                }
-                $currentDate->modify('+1 day');
-            }
-
-            $leave->total_leave_days = $total_leave_days;
+        if ($leave->status == 'Approved' || $leave->status == 'Auto Approved' || $leave->status == 'HR Approved') {
+            
             $leave->status = 'Approved';
+            if($LeaveStatus == 'Approved'){
+                $leave->approved_type = 'manual';
+            }else if($LeaveStatus == 'HR Approved'){
+                $leave->approved_type = 'hr';
+            }else{
+                $leave->approved_type = 'auto';
+            }
+            
+            $leave->approved_by = \Auth::user()->id;         
+            
+            $leave->approved_at = now();
+        }
+
+
+        if ($leave->status == 'Reject' || $leave->status == 'HR Rejected') {
+            
+            $leave->status = 'Reject';
+            if($LeaveStatus == 'Reject'){
+                $leave->approved_type = 'manual';
+            }else{
+                $leave->approved_type = 'hr';
+            }
+            
+            $leave->approved_by = \Auth::user()->id;         
+            
+            $leave->approved_at = now();
         }
 
         $leave->save();
@@ -1154,13 +1579,13 @@ class LeaveController extends Controller
         }*/
 
         // Email notification (sending email based on leave status)
-        $setings = Utility::settings();
-        if ($setings['leave_status'] == 1) {
+        $settings = Utility::settings();
+        if ($settings['leave_status'] == 1) {
             $employee = Employee::where('id', $leave->employee_id)->first();
 
             // $uArr = [
             //     'leave_status_name' => $employee->name,
-            //     'leave_status' => $request->status,
+            //     'leave_status' => $LeaveStatus,
             //     'leave_reason' => $leave->leave_reason,
             //     'leave_start_date' => $leave->start_date,
             //     'leave_end_date' => $leave->end_date,
@@ -1179,11 +1604,7 @@ class LeaveController extends Controller
                 $leaveDate = $formattedStartDate;
             }else{
 
-                $startDate = \Carbon\Carbon::parse($leave->start_date);
-                $endDate = \Carbon\Carbon::parse($leave->end_date);
-                $total_leave_days = $startDate->diffInDays($endDate);
-
-                if($total_leave_days > 1){
+                if($leave->total_leave_days > 1){
                     $leaveDate = $formattedStartDate." To ".$formattedEndDate." [".$leave->total_leave_days." Days ]";
                 }else{
                     $leaveDate = $formattedStartDate." To ".$formattedEndDate;
@@ -1195,12 +1616,36 @@ class LeaveController extends Controller
 
             // $fromEmail='ai@miraclecloud-technology.com';
             // $fromName='MCT USER';
-            if($setings['is_email_trigger'] === 'on'){
 
-                $fromEmail=$setings['DIRECTOR_EMAIL'];
-                $fromName='Ravi Brahmbhatt';
+
+            if($settings['is_whatsApp_Msg_trigger'] === 'on'){
+                $leaveId = Get_LeaveId($leave->id);
+                $employeeName = $employee->name;
+                $leaveType = $leavetype->title;
+                $leaveDateTo = $leaveDate;
+                $leaveReason = $leave->leave_reason;
+                $leave_status = GetStatusName($leave->status,$leave->approved_type);
+                $employeePhone = $employee->phone;
+                $leaveTypeId = $leave->leave_type_id;
+                $leaveTime = $leave->early_time;
+                
+                if($LeaveStatus == 'Approved'){
+                    $whatsapp->sendLeaveApproved($leaveId, $employeeName, $leaveTypeId, $leaveType, $leaveTime, $leaveDateTo, $leaveReason, $leave_status, $employeePhone);
+                }else if($LeaveStatus == 'Auto Approved'){
+                    $whatsapp->sendLeaveAutoApproved($leaveId, $employeeName, $leaveTypeId, $leaveType, $leaveTime, $leaveDateTo, $leaveReason, $leave_status, $employeePhone);
+                }else{
+                    $whatsapp->sendLeaveRejected($leaveId, $employeeName, $leaveTypeId, $leaveType, $leaveTime, $leaveDateTo, $leaveReason, $leave_status, $employeePhone);
+                }
+            }
+
+            if($settings['is_email_trigger'] === 'on'){
+
+                $fromEmail=$settings['HR_EMAIL'];
+                $fromName='MCT IT SOLUTIONS PVT LTD';
+                
 
                 $data = [
+                    'leaveId' => Get_LeaveId($leave->id),
                     'employeeName' => $employee->name,
                     'leaveType' => $leavetype->title,
                     'leaveFullHalfDay' => $this->getLeaveFullHalfDay($leave->half_day_type),
@@ -1210,6 +1655,8 @@ class LeaveController extends Controller
                     'status' => $leave->status,
                     'remark' => $leave->remark,
                     'total_leave_days' => $leave->total_leave_days,
+                    'start_date' => $leave->start_date,
+                    'end_date' => $leave->end_date,
                     'toEmail' => $employee->email,
                     'fromEmail' => $fromEmail,
                     'fromNameEmail' => $fromName,
@@ -1219,8 +1666,14 @@ class LeaveController extends Controller
 
             
 
-                if($request->status == 'Approved'){
+                if($LeaveStatus == 'Approved'){
                     $emailTemp='email.leave-approved';
+                }else if($LeaveStatus == 'Auto Approved'){
+                    $emailTemp='email.leave-approved-auto'; 
+                }else if($LeaveStatus == 'HR Approved'){
+                    $emailTemp='email.leave-approved-hr';
+                }else if($LeaveStatus == 'HR Rejected'){
+                    $emailTemp='email.leave-rejected-hr';
                 }else{
                     $emailTemp='email.leave-rejected';
                 }
@@ -1238,7 +1691,9 @@ class LeaveController extends Controller
 
                 $emails[] = $fromEmail;
 
-                $emails[] = $setings['CFO_EMAIL'];
+                $emails[] = $settings['CFO_EMAIL'];
+
+                $emails[] = $settings['DIRECTOR_EMAIL'];
 
                 if(!empty($managers)){
                     foreach ($ManagersEmails as $Email) {
@@ -1282,6 +1737,74 @@ class LeaveController extends Controller
 
     public function jsoncount(Request $request)
     {
+        $employee = Employee::find($request->employee_id);
+
+        // Get active financial year
+        $financialYear = \DB::table('financial_years')
+            ->where('is_active', 1)
+            ->first();
+
+        $startDate = $financialYear->start_date ?? Utility::AnnualLeaveCycle()['start_date'];
+        $endDate   = $financialYear->end_date ?? Utility::AnnualLeaveCycle()['end_date'];
+
+        // Calculate months of service in the financial year
+        $joinDate = \Carbon\Carbon::parse($employee->company_doj);
+
+        if ($joinDate->lt(\Carbon\Carbon::parse($startDate))) {
+            $joinDate = \Carbon\Carbon::parse($startDate);
+        }
+
+        $monthsWorked = $joinDate->diffInMonths(\Carbon\Carbon::parse($endDate)) + 1;
+
+        // Get all leave types for this employee
+        $leaveQuery = LeaveType::select(
+            \DB::raw('COALESCE(SUM(leaves.total_leave_days),0) AS total_leave'),
+            'leave_types.title',
+            'leave_types.code',
+            'leave_types.days',
+            'leave_types.id'
+        )
+        ->leftJoin('leaves', function ($join) use ($request, $startDate, $endDate) {
+            $join->on('leaves.leave_type_id', '=', 'leave_types.id')
+                ->where('leaves.employee_id', '=', $request->employee_id)
+                ->whereIn('leaves.status', ['Approved', 'Pre-Approved'])
+                ->whereBetween('leaves.created_at', [$startDate, $endDate]);
+        })
+        ->where('leave_types.created_by', '=', \Auth::user()->creatorId());
+
+        // Restrict leave types based on employee type
+        if ($employee->employee_type != "Payroll Employee") {
+            // Only LWP allowed
+            $leaveQuery->where('leave_types.code', '=', 'LWP');
+        } elseif ($employee->work_from_home == 0) {
+            // Exclude WFH for non-WFH employees
+            $leaveQuery->where('leave_types.code', '!=', 'WFH');
+        }
+
+        $leave_counts = $leaveQuery
+            ->groupBy('leave_types.id')
+            ->get();
+
+        // Pro-rate leave based on months worked
+        foreach ($leave_counts as $leave) {
+            $EmpCountDay=round(($leave->days / 12) * $monthsWorked);
+            if($EmpCountDay < $leave->days){
+                $leave->days = $EmpCountDay;
+            }else{
+                $leave->days = $leave->days;
+            }
+            
+        }
+
+        return $leave_counts;
+    }
+
+
+
+    public function jsoncountOld(Request $request)
+    {
+
+        $employee  = Employee::find($request->employee_id);
         // Get active financial year
         $financialYear = \DB::table('financial_years')
             ->where('is_active', 1)
@@ -1291,7 +1814,26 @@ class LeaveController extends Controller
         $startDate = $financialYear->start_date ?? Utility::AnnualLeaveCycle()['start_date'];
         $endDate   = $financialYear->end_date ?? Utility::AnnualLeaveCycle()['end_date'];
 
-        $leave_counts = LeaveType::select(
+        if($employee->work_from_home == 0){
+            $leave_counts = LeaveType::select(
+                \DB::raw('COALESCE(SUM(leaves.total_leave_days),0) AS total_leave'),
+                'leave_types.title',
+                'leave_types.code',
+                'leave_types.days',
+                'leave_types.id'
+            )
+            ->leftJoin('leaves', function ($join) use ($request, $startDate, $endDate) {
+                $join->on('leaves.leave_type_id', '=', 'leave_types.id')
+                    ->where('leaves.employee_id', '=', $request->employee_id)
+                    ->where('leaves.status', '=', 'Approved')
+                    ->whereBetween('leaves.created_at', [$startDate, $endDate]);
+            })
+            ->where('leave_types.created_by', '=', \Auth::user()->creatorId())
+            ->where('leave_types.code', '!=', 'WFH')
+            ->groupBy('leave_types.id')
+            ->get();
+        }else{
+            $leave_counts = LeaveType::select(
                 \DB::raw('COALESCE(SUM(leaves.total_leave_days),0) AS total_leave'),
                 'leave_types.title',
                 'leave_types.code',
@@ -1307,6 +1849,8 @@ class LeaveController extends Controller
             ->where('leave_types.created_by', '=', \Auth::user()->creatorId())
             ->groupBy('leave_types.id')
             ->get();
+        }
+        
 
         return $leave_counts;
     }
@@ -1380,9 +1924,10 @@ class LeaveController extends Controller
         return view('leave.cancel', compact('leave'));
     }
 
-    public function cancelStore(Request $request, $id)
+    public function cancelStore(Request $request, UltraMsgService $whatsapp, $id)
     {
         $leave = LocalLeave::findOrFail($id);
+        $settings = Utility::settings();
 
         $request->validate([
             'cancel_reason' => 'required',
@@ -1447,15 +1992,31 @@ class LeaveController extends Controller
         $emails[] = $employee->email;
 
 
+        if($settings['is_whatsApp_Msg_trigger'] === 'on'){
+            $leaveId = Get_LeaveId($leave->id);
+            $employeeName = $employee->name;
+            $leaveType = $leavetype->title;
+            $leaveDateTo = $leaveDate;
+            $leaveReason = $leave->leave_reason;
+            $leave_status = GetStatusName($leave->status,$leave->approved_type);
+            $employeePhone = $employee->phone;
+            $leaveTypeId = $leave->leave_type_id;
+            $leaveTime = $leave->early_time;
+            
+            $whatsapp->sendLeaveCancelled($leaveId, $employeeName, $leaveTypeId, $leaveType, $leaveTime, $leaveDateTo, $leaveReason, $leave_status, $employeePhone);
+        }
 
-        Mail::send('email.leave-Cancelled', $data, function ($message) use ($data,$emails) {
-            $subjectTxt = $data['leaveType']." Request on ".$data["leaveDate"];
-            $message->to($data["toEmail"])  // Manager’s email address
-                    ->subject($subjectTxt)
-                    ->from($data["fromEmail"], $data["fromNameEmail"])
-                    ->replyTo($data["replyTo"], $data["replyToName"])
-                    ->cc($emails);
-        });
+        if($settings['is_email_trigger'] === 'on'){
+            Mail::send('email.leave-Cancelled', $data, function ($message) use ($data,$emails) {
+                $subjectTxt = $data['leaveType']." Request on ".$data["leaveDate"];
+                $message->to($data["toEmail"])  // Manager’s email address
+                        ->subject($subjectTxt)
+                        ->from($data["fromEmail"], $data["fromNameEmail"])
+                        ->replyTo($data["replyTo"], $data["replyToName"])
+                        ->cc($emails);
+            });
+        }
+
 
         // Optional: trigger email to approver/admin
 

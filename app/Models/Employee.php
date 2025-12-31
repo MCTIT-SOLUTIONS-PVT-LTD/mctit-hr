@@ -36,6 +36,8 @@ class Employee extends Model
         'created_by',
         'is_manager',
         'manages_id',
+        'work_from_home',
+        'employee_type',
     ];
 
     public function documents()
@@ -298,5 +300,10 @@ class Employee extends Model
     public function projects()
     {
         return $this->belongsToMany(Project::class, 'project_employee', 'employee_id', 'project_id');
+    }
+
+    public function availabilityStatus()
+    {
+        return $this->belongsTo(AvailabilityStatusList::class, 'availability_status');
     }
 }

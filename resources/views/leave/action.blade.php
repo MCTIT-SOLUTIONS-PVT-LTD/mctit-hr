@@ -3,7 +3,7 @@
 @php
     use Carbon\Carbon;
     $endDate = Carbon::parse($leave->end_date);
-    $hideFooter = Carbon::now()->diffInDays($endDate, false) < -5;
+    $hideFooter = Carbon::now()->diffInDays($endDate, false) < -45;
 @endphp
 
 <div class="modal-body">
@@ -30,19 +30,7 @@
                 <tr>
                     <th>{{ __('Leave(Full/Half Day) ') }}</th>
                     <td>
-                        @switch($leave->half_day_type)
-                            @case('full_day')
-                                <div class="badge bg-success p-2 px-3">{{ __('Full Day') }}</div>
-                                @break
-                            @case('morning')
-                                <div class="badge bg-dark p-2 px-3">{{ __('First Half (Morning)') }}</div>
-                                @break
-                            @case('afternoon')
-                                <div class="badge bg-danger p-2 px-3">{{ __('Second Half (Afternoon)') }}</div>
-                                @break
-                            @default
-                                <div class="badge bg-secondary p-2 px-3">{{ __('Not Specified') }}</div>
-                        @endswitch
+                        <?php echo indexHalfLabel($leave); ?>
                     </td>
                 </tr>
                 @endif
@@ -71,29 +59,7 @@
                 <tr>
                     <th>{{ __('Status') }}</th>
                     <td>
-                        @if ($leave->status == 'Pending')
-                            <div class="badge bg-warning p-2 px-3 ">{{ $leave->status }}</div>
-                        @elseif ($leave->status == 'In_Process')
-                            <div class="badge p-2 px-3" style="background:#9D00FF;">In-Process</div>
-                        @elseif ($leave->status == 'Manager_Approved')
-                            <div class="badge p-2 px-3" style="background:#004000;">Manager-Approved</div>
-                        @elseif ($leave->status == 'Manager_Rejected')
-                            <div class="badge p-2 px-3" style="background:#800040;">Manager-Rejected</div>
-                        @elseif ($leave->status == 'Partially_Approved')
-                            <div class="badge p-2 px-3" style="background:#9ACD32;">Partially-Approved</div>
-                        <!-- @elseif (($leave->status == 'In_Process' || $leave->status == 'Manager_Approved' || $leave->status == 'Partially_Approved') && \Auth::user()->type === 'employee')
-                            <div class="badge p-2 px-3" style="background:#FA5F55;">In-Process</div> -->
-                        @elseif($leave->status == 'Approved')
-                            <div class="badge bg-success p-2 px-3 ">{{ $leave->status }}</div>
-                        @elseif($leave->status == "Reject")
-                            <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
-                        @elseif($leave->status == "Draft")
-                            <div class="badge bg-info p-2 px-3 ">{{ $leave->status }}</div>
-                        @elseif($leave->status == "Cancelled")
-                            <div class="badge bg-danger p-2 px-3 ">{{ $leave->status }}</div>
-                        @elseif($leave->status == 'Pre-Approved')
-                            <div class="text-success"><b>{{ $leave->status }}</b></div>
-                        @endif
+                        {!! leaveStatusBadge($leave) !!}
                     </td>
                 </tr>
 
@@ -170,8 +136,16 @@
 
 @if (!$hideFooter && in_array($leave->status, ['Manager_Approved', 'Partially_Approved', 'Reject','Approved','Pre-Approved']) && (Auth::user()->type == 'company' || Auth::user()->type == 'hr' || Auth::user()->type == 'CEO') && $leave->status != "Cancelled")
 <div class="modal-footer">
+    @if (Auth::user()->type != 'company')
     <input type="submit" value="{{ __('Approved') }}" class="btn btn-success rounded" name="status">
-    <input type="submit" value="{{ __('Reject') }}" class="btn btn-danger rounded" name="status">
+    <input type="submit" value="{{ __('Rejected') }}" class="btn btn-danger rounded" name="status">
+    @endif
+    @if (Auth::user()->type == 'company')
+        <input type="submit" value="{{ __('Auto Approved') }}" class="btn btn-outline-success rounded" name="status">
+
+        <input type="submit" value="{{ __('HR Approved') }}" class="btn btn-success rounded" name="status">
+        <input type="submit" value="{{ __('HR Rejected') }}" class="btn btn-danger rounded" name="status">
+    @endif
 </div>
 @endif
 
